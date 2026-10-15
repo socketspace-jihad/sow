@@ -35,6 +35,7 @@ func (r *LineRenderer) Setup(ds *data.DataSet, cfg *Config, width, height int) {
 		return
 	}
 
+	// Compute Y range from primary + all overlay data
 	minY, maxY := values[0], values[0]
 	for _, v := range values {
 		if v < minY {
@@ -44,6 +45,26 @@ func (r *LineRenderer) Setup(ds *data.DataSet, cfg *Config, width, height int) {
 			maxY = v
 		}
 	}
+	for _, ov := range cfg.Overlays {
+		ovVals := ds.NumericColumn(ov.ColIdx)
+		for _, v := range ovVals {
+			if v < minY {
+				minY = v
+			}
+			if v > maxY {
+				maxY = v
+			}
+		}
+	}
+
+	// Apply fixed scale if set
+	if cfg.FixScale {
+		if cfg.YMin != 0 || cfg.YMax != 0 {
+			minY = cfg.YMin
+			maxY = cfg.YMax
+		}
+	}
+
 	if minY == maxY {
 		minY -= 1
 		maxY += 1
@@ -57,24 +78,37 @@ func (r *LineRenderer) Setup(ds *data.DataSet, cfg *Config, width, height int) {
 		r.chart.SetStyles(runes.ThinLineStyle, lipgloss.NewStyle().Foreground(cfg.Theme.Colors[0]))
 	}
 
+	// Plot primary series
 	for i, v := range values {
 		r.chart.Plot(canvas.Float64Point{X: float64(i), Y: v})
 	}
+
+	// Plot overlays as separate named datasets
+	for _, ov := range cfg.Overlays {
+		ovVals := ds.NumericColumn(ov.ColIdx)
+		colorIdx := ov.Color % len(cfg.Theme.Colors)
+		r.chart.SetDataSetStyles(ov.Name, runes.ThinLineStyle,
+			lipgloss.NewStyle().Foreground(cfg.Theme.Colors[colorIdx]))
+		for i, v := range ovVals {
+			r.chart.PlotDataSet(ov.Name, canvas.Float64Point{X: float64(i), Y: v})
+		}
+	}
+
 	r.count = float64(len(values))
-	r.chart.Draw()
+	r.chart.DrawAll()
 }
 
 func (r *LineRenderer) Push(dp data.DataPoint) {
 	r.chart.Plot(canvas.Float64Point{X: r.count, Y: dp.Value})
 	r.count++
-	r.chart.Draw()
+	r.chart.DrawAll()
 }
 
 func (r *LineRenderer) Resize(width, height int) {
 	r.width = width
 	r.height = height
 	r.chart.Resize(width, height)
-	r.chart.Draw()
+	r.chart.DrawAll()
 }
 
 func (r *LineRenderer) View() string {

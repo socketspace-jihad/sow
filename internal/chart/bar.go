@@ -23,6 +23,11 @@ func (r *BarRenderer) Setup(ds *data.DataSet, cfg *Config, width, height int) {
 
 	r.chart = barchart.New(width, height)
 	r.chart.SetHorizontal(r.horizontal)
+	r.chart.SetShowAxis(true)
+
+	if cfg.FixScale && cfg.YMax > 0 {
+		r.chart.SetMax(cfg.YMax)
+	}
 
 	if ds == nil || len(ds.Rows) == 0 {
 		return
@@ -34,6 +39,7 @@ func (r *BarRenderer) Setup(ds *data.DataSet, cfg *Config, width, height int) {
 	}
 	values := ds.NumericColumn(cfg.YColIdx)
 
+	// Build primary bars
 	bars := make([]barchart.BarData, len(values))
 	for i, v := range values {
 		label := fmt.Sprintf("%d", i)
@@ -41,15 +47,31 @@ func (r *BarRenderer) Setup(ds *data.DataSet, cfg *Config, width, height int) {
 			label = labels[i]
 		}
 		colorIdx := i % len(cfg.Theme.Colors)
-		bars[i] = barchart.BarData{
-			Label: label,
-			Values: []barchart.BarValue{
-				{
-					Name:  label,
-					Value: v,
-					Style: lipgloss.NewStyle().Foreground(cfg.Theme.Colors[colorIdx]),
-				},
+
+		barValues := []barchart.BarValue{
+			{
+				Name:  label,
+				Value: v,
+				Style: lipgloss.NewStyle().Foreground(cfg.Theme.Colors[colorIdx]),
 			},
+		}
+
+		// Add overlay values as grouped bars
+		for _, ov := range cfg.Overlays {
+			ovVals := ds.NumericColumn(ov.ColIdx)
+			if i < len(ovVals) {
+				ovColor := ov.Color % len(cfg.Theme.Colors)
+				barValues = append(barValues, barchart.BarValue{
+					Name:  ov.Name,
+					Value: ovVals[i],
+					Style: lipgloss.NewStyle().Foreground(cfg.Theme.Colors[ovColor]),
+				})
+			}
+		}
+
+		bars[i] = barchart.BarData{
+			Label:  label,
+			Values: barValues,
 		}
 	}
 
@@ -58,13 +80,9 @@ func (r *BarRenderer) Setup(ds *data.DataSet, cfg *Config, width, height int) {
 }
 
 func (r *BarRenderer) Push(dp data.DataPoint) {
-	colorIdx := 0
-	if r.cfg != nil && len(r.cfg.Theme.Colors) > 0 {
-		colorIdx = 0
-	}
 	color := lipgloss.Color("#8BE9FD")
 	if r.cfg != nil && len(r.cfg.Theme.Colors) > 0 {
-		color = r.cfg.Theme.Colors[colorIdx]
+		color = r.cfg.Theme.Colors[0]
 	}
 
 	r.chart.Push(barchart.BarData{

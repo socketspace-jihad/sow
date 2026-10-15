@@ -20,6 +20,22 @@ type Config struct {
 	XLabel string // e.g., "time", "Month"
 	YLabel string // e.g., "google.com latency", "Revenue"
 	Unit   string // e.g., "ms", "%", ""
+
+	// Per-chart configuration
+	YMin     float64 // Fixed Y-axis minimum (0 = auto)
+	YMax     float64 // Fixed Y-axis maximum (0 = auto)
+	FixScale bool    // Whether YMin/YMax are set explicitly
+	PieStyle string  // "bar" or "circle" (default: "bar")
+
+	// Overlay configuration
+	Overlays []OverlayConfig
+}
+
+// OverlayConfig defines one overlay series on the chart.
+type OverlayConfig struct {
+	Name   string // display name
+	ColIdx int    // column index in the dataset
+	Color  int    // index into theme colors
 }
 
 // Chart type constants

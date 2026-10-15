@@ -24,25 +24,40 @@ func (r *StreamlineRenderer) Setup(ds *data.DataSet, cfg *Config, width, height 
 		r.chart.SetStyles(runes.ThinLineStyle, lipgloss.NewStyle().Foreground(cfg.Theme.Colors[0]))
 	}
 
+	if cfg.FixScale && cfg.YMax > 0 {
+		r.chart.SetYRange(cfg.YMin, cfg.YMax)
+	}
+
 	if ds != nil && len(ds.Rows) > 0 {
 		values := ds.NumericColumn(cfg.YColIdx)
 		for _, v := range values {
 			r.chart.Push(v)
 		}
+
+		// Setup overlay datasets
+		for _, ov := range cfg.Overlays {
+			colorIdx := ov.Color % len(cfg.Theme.Colors)
+			r.chart.SetDataSetStyles(ov.Name, runes.ThinLineStyle,
+				lipgloss.NewStyle().Foreground(cfg.Theme.Colors[colorIdx]))
+			ovVals := ds.NumericColumn(ov.ColIdx)
+			for _, v := range ovVals {
+				r.chart.PushDataSet(ov.Name, v)
+			}
+		}
 	}
-	r.chart.Draw()
+	r.chart.DrawAll()
 }
 
 func (r *StreamlineRenderer) Push(dp data.DataPoint) {
 	r.chart.Push(dp.Value)
-	r.chart.Draw()
+	r.chart.DrawAll()
 }
 
 func (r *StreamlineRenderer) Resize(width, height int) {
 	r.width = width
 	r.height = height
 	r.chart.Resize(width, height)
-	r.chart.Draw()
+	r.chart.DrawAll()
 }
 
 func (r *StreamlineRenderer) View() string {

@@ -44,6 +44,14 @@ func (r *ScatterRenderer) Setup(ds *data.DataSet, cfg *Config, width, height int
 			maxY = v
 		}
 	}
+
+	if cfg.FixScale {
+		if cfg.YMin != 0 || cfg.YMax != 0 {
+			minY = cfg.YMin
+			maxY = cfg.YMax
+		}
+	}
+
 	if minY == maxY {
 		minY -= 1
 		maxY += 1
@@ -60,21 +68,33 @@ func (r *ScatterRenderer) Setup(ds *data.DataSet, cfg *Config, width, height int
 	for i, v := range values {
 		r.chart.Plot(canvas.Float64Point{X: float64(i), Y: v})
 	}
+
+	// Plot overlays
+	for _, ov := range cfg.Overlays {
+		ovVals := ds.NumericColumn(ov.ColIdx)
+		colorIdx := ov.Color % len(cfg.Theme.Colors)
+		r.chart.SetDataSetStyles(ov.Name, runes.ThinLineStyle,
+			lipgloss.NewStyle().Foreground(cfg.Theme.Colors[colorIdx]))
+		for i, v := range ovVals {
+			r.chart.PlotDataSet(ov.Name, canvas.Float64Point{X: float64(i), Y: v})
+		}
+	}
+
 	r.count = float64(len(values))
-	r.chart.Draw()
+	r.chart.DrawAll()
 }
 
 func (r *ScatterRenderer) Push(dp data.DataPoint) {
 	r.chart.Plot(canvas.Float64Point{X: r.count, Y: dp.Value})
 	r.count++
-	r.chart.Draw()
+	r.chart.DrawAll()
 }
 
 func (r *ScatterRenderer) Resize(width, height int) {
 	r.width = width
 	r.height = height
 	r.chart.Resize(width, height)
-	r.chart.Draw()
+	r.chart.DrawAll()
 }
 
 func (r *ScatterRenderer) View() string {

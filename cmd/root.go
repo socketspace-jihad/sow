@@ -27,6 +27,10 @@ var (
 	flagDelimiter string
 	flagSheet     string
 	flagLive      bool
+	flagYMin      float64
+	flagYMax      float64
+	flagPieStyle  string
+	flagOverlay   []string
 )
 
 var rootCmd = &cobra.Command{
@@ -55,6 +59,10 @@ func init() {
 	rootCmd.PersistentFlags().StringVarP(&flagDelimiter, "delimiter", "d", "", "Field delimiter (auto-detect if empty)")
 	rootCmd.PersistentFlags().StringVarP(&flagSheet, "sheet", "s", "", "Sheet name for XLSX files")
 	rootCmd.PersistentFlags().BoolVarP(&flagLive, "live", "l", false, "Enable live/streaming mode")
+	rootCmd.PersistentFlags().Float64Var(&flagYMin, "ymin", 0, "Fixed Y-axis minimum")
+	rootCmd.PersistentFlags().Float64Var(&flagYMax, "ymax", 0, "Fixed Y-axis maximum")
+	rootCmd.PersistentFlags().StringVar(&flagPieStyle, "pie-style", "bar", "Pie chart style: bar or circle")
+	rootCmd.PersistentFlags().StringSliceVar(&flagOverlay, "overlay", nil, "Overlay columns (name or index, repeatable)")
 }
 
 // SetVersion sets version info from ldflags.
@@ -80,6 +88,10 @@ func runChart(chartType string, args []string) error {
 		Height:    flagHeight,
 		Theme:     th,
 		Live:      flagLive,
+		YMin:      flagYMin,
+		YMax:      flagYMax,
+		FixScale:  flagYMin != 0 || flagYMax != 0,
+		PieStyle:  flagPieStyle,
 	}
 
 	if flagLive {
@@ -135,6 +147,20 @@ func runStatic(cfg *chart.Config, args []string) error {
 	}
 	if cfg.YLabel == "" {
 		cfg.YLabel = fmt.Sprintf("col %d", cfg.YColIdx)
+	}
+
+	// Pre-populate overlays from --overlay flag
+	for i, ov := range flagOverlay {
+		colIdx := ds.ResolveColumn(ov)
+		name := ov
+		if colIdx < len(ds.Headers) {
+			name = ds.Headers[colIdx]
+		}
+		cfg.Overlays = append(cfg.Overlays, chart.OverlayConfig{
+			Name:   name,
+			ColIdx: colIdx,
+			Color:  i + 1,
+		})
 	}
 
 	m := chart.NewModel(cfg, ds, nil)
