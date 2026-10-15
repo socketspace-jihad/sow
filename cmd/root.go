@@ -237,7 +237,7 @@ func runLive(cfg *chart.Config) error {
 			streamInfo = &info
 			continue
 		case cols := <-colsCh:
-			// Auto-set Y label from detected columns
+			cfg.LiveColumns = cols
 			if cfg.YLabel == "" && len(cols) > 0 {
 				if cfg.YCol != "" && cfg.YCol != "0" && cfg.YCol != "1" {
 					cfg.YLabel = cfg.YCol

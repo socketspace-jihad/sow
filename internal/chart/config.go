@@ -28,8 +28,9 @@ type Config struct {
 	PieStyle string  // "bar" or "circle" (default: "bar")
 
 	// Live Y filter — set by the Y column modal, NOT by --y flag.
-	// Empty = show all labels. Set = show only this label.
 	LiveYFilter string
+	// LiveColumns stores detected column names from piped tabular data.
+	LiveColumns []string
 
 	// Overlay configuration
 	Overlays []OverlayConfig
