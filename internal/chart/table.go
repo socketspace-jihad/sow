@@ -5,7 +5,7 @@ import (
 
 	"github.com/charmbracelet/bubbles/table"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/muhammadjihad/sow/internal/data"
+	"github.com/socketspace-jihad/sow/internal/data"
 )
 
 type TableRenderer struct {

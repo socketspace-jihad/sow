@@ -1,6 +1,6 @@
 package chart
 
-import "github.com/muhammadjihad/sow/internal/theme"
+import "github.com/socketspace-jihad/sow/internal/theme"
 
 // Config holds all chart configuration from CLI flags.
 type Config struct {

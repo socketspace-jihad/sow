@@ -3,7 +3,7 @@ package chart
 import (
 	"github.com/NimbleMarkets/ntcharts/sparkline"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/muhammadjihad/sow/internal/data"
+	"github.com/socketspace-jihad/sow/internal/data"
 )
 
 type SparklineRenderer struct {

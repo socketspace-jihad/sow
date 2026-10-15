@@ -9,9 +9,9 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/muhammadjihad/sow/internal/chart"
-	"github.com/muhammadjihad/sow/internal/data"
-	"github.com/muhammadjihad/sow/internal/theme"
+	"github.com/socketspace-jihad/sow/internal/chart"
+	"github.com/socketspace-jihad/sow/internal/data"
+	"github.com/socketspace-jihad/sow/internal/theme"
 	"github.com/spf13/cobra"
 )
 

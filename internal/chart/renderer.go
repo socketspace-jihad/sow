@@ -1,6 +1,6 @@
 package chart
 
-import "github.com/muhammadjihad/sow/internal/data"
+import "github.com/socketspace-jihad/sow/internal/data"
 
 // Renderer is the interface all chart types implement.
 type Renderer interface {

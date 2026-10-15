@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/muhammadjihad/sow/cmd"
+	"github.com/socketspace-jihad/sow/cmd"
 )
 
 // Set by goreleaser / ldflags at build time.

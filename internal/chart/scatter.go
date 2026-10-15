@@ -5,7 +5,7 @@ import (
 	"github.com/NimbleMarkets/ntcharts/canvas/runes"
 	"github.com/NimbleMarkets/ntcharts/linechart/wavelinechart"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/muhammadjihad/sow/internal/data"
+	"github.com/socketspace-jihad/sow/internal/data"
 )
 
 type ScatterRenderer struct {

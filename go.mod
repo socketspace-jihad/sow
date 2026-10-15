@@ -1,4 +1,4 @@
-module github.com/muhammadjihad/sow
+module github.com/socketspace-jihad/sow
 
 go 1.26.5
 

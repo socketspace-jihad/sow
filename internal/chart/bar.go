@@ -5,7 +5,7 @@ import (
 
 	"github.com/NimbleMarkets/ntcharts/barchart"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/muhammadjihad/sow/internal/data"
+	"github.com/socketspace-jihad/sow/internal/data"
 )
 
 type BarRenderer struct {

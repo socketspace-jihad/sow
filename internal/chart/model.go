@@ -8,8 +8,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/muhammadjihad/sow/internal/data"
-	"github.com/muhammadjihad/sow/internal/theme"
+	"github.com/socketspace-jihad/sow/internal/data"
+	"github.com/socketspace-jihad/sow/internal/theme"
 )
 
 // dataMsg carries a live data point from stdin goroutine.

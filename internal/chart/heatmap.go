@@ -4,7 +4,7 @@ import (
 	"strconv"
 
 	"github.com/NimbleMarkets/ntcharts/heatmap"
-	"github.com/muhammadjihad/sow/internal/data"
+	"github.com/socketspace-jihad/sow/internal/data"
 )
 
 type HeatmapRenderer struct {
