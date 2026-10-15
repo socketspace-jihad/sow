@@ -182,22 +182,15 @@ func TestDetectStreamPing(t *testing.T) {
 	}
 }
 
-func TestDetectStreamVmstat(t *testing.T) {
-	info := DetectStream("procs -----------memory---------- ---swap-- -----io---- -system-- ------cpu-----")
-	if info == nil {
-		t.Fatal("expected StreamInfo for vmstat header")
-	}
-	if info.Source != "vmstat" {
-		t.Errorf("expected source 'vmstat', got %q", info.Source)
-	}
-}
-
-func TestDetectStreamNotHeader(t *testing.T) {
+func TestDetectStreamNotPing(t *testing.T) {
 	if info := DetectStream("64 bytes from google.com: time=28.3 ms"); info != nil {
 		t.Errorf("expected nil for ping data line, got %+v", info)
 	}
 	if info := DetectStream("42"); info != nil {
 		t.Errorf("expected nil for plain number, got %+v", info)
+	}
+	if info := DetectStream("procs -----------memory----------"); info != nil {
+		t.Errorf("expected nil for vmstat line (no auto-detect), got %+v", info)
 	}
 }
 

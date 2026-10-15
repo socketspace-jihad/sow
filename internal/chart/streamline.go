@@ -13,8 +13,11 @@ type StreamlineRenderer struct {
 	cfg        *Config
 	width      int
 	height     int
-	knownRows  map[string]bool // tracks registered multi-row datasets
-	colorIndex int             // next color to assign
+	knownRows  map[string]bool
+	colorIndex int
+	// For stack mode: accumulate values per time tick
+	stackAccum float64
+	stackCount int
 }
 
 func (r *StreamlineRenderer) Setup(ds *data.DataSet, cfg *Config, width, height int) {
@@ -22,7 +25,7 @@ func (r *StreamlineRenderer) Setup(ds *data.DataSet, cfg *Config, width, height 
 	r.width = width
 	r.height = height
 	r.knownRows = make(map[string]bool)
-	r.colorIndex = 1 // 0 is default series
+	r.colorIndex = 1
 
 	r.chart = streamlinechart.New(width, height)
 	if len(cfg.Theme.Colors) > 0 {
@@ -54,11 +57,21 @@ func (r *StreamlineRenderer) Setup(ds *data.DataSet, cfg *Config, width, height 
 
 func (r *StreamlineRenderer) Push(dp data.DataPoint) {
 	label := dp.Label
+
+	// Skip hidden rows
+	if label != "" && r.cfg.HiddenRows[label] {
+		return
+	}
+
+	if r.cfg.RowMode == "stack" {
+		r.pushStack(dp)
+		return
+	}
+
+	// Overlay mode (default)
 	if label == "" || label == r.cfg.YLabel {
-		// Default series
 		r.chart.Push(dp.Value)
 	} else {
-		// Multi-row: route to named dataset (auto-register)
 		if !r.knownRows[label] {
 			r.knownRows[label] = true
 			colorIdx := r.colorIndex % len(r.cfg.Theme.Colors)
@@ -69,6 +82,20 @@ func (r *StreamlineRenderer) Push(dp data.DataPoint) {
 		r.chart.PushDataSet(label, dp.Value)
 	}
 	r.chart.DrawAll()
+}
+
+// pushStack accumulates values from the same time tick and pushes a single stacked value.
+// When Row resets to 0, the previous accumulated value is flushed.
+func (r *StreamlineRenderer) pushStack(dp data.DataPoint) {
+	if dp.Row == 0 && r.stackCount > 0 {
+		// New cycle — flush the accumulated value
+		r.chart.Push(r.stackAccum)
+		r.chart.DrawAll()
+		r.stackAccum = 0
+		r.stackCount = 0
+	}
+	r.stackAccum += dp.Value
+	r.stackCount++
 }
 
 func (r *StreamlineRenderer) Resize(width, height int) {

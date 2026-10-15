@@ -84,6 +84,9 @@ func (r *BarRenderer) Setup(ds *data.DataSet, cfg *Config, width, height int) {
 }
 
 func (r *BarRenderer) Push(dp data.DataPoint) {
+	if dp.Label != "" && r.cfg.HiddenRows[dp.Label] {
+		return
+	}
 	color := r.colorForLabel(dp.Label)
 
 	r.chart.Push(barchart.BarData{

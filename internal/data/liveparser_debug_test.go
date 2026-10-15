@@ -3,7 +3,8 @@ package data
 import "testing"
 
 func TestLiveParserSarDev(t *testing.T) {
-	lp := NewLiveParser("", nil, 0, 0)
+	// sar -n DEV: --skip 2 --header
+	lp := NewLiveParser("", nil, 2, 0, true, nil)
 
 	lines := []string{
 		"Linux 5.4.0-42-generic (hostname)     10/15/2026     _x86_64_    (8 CPU)",
@@ -93,7 +94,7 @@ func TestParseTextWithSkip(t *testing.T) {
 }
 
 func TestLiveParserWithSkip(t *testing.T) {
-	lp := NewLiveParser("", nil, 2, 0) // skip first 2 lines
+	lp := NewLiveParser("", nil, 2, 0, false, nil) // skip first 2 lines
 
 	lines := []string{
 		"Linux 5.4.0-42-generic (hostname)",
@@ -118,7 +119,7 @@ func TestLiveParserWithSkip(t *testing.T) {
 
 func TestLiveParserRowStream(t *testing.T) {
 	// mpstat -P ALL 1: --row-stream 3 groups 3 data lines per sample
-	lp := NewLiveParser("%usr", nil, 0, 3)
+	lp := NewLiveParser("%usr", nil, 0, 3, true, nil)
 
 	lines := []string{
 		"11:48:56     CPU    %usr   %nice    %sys %iowait",

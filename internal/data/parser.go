@@ -12,20 +12,15 @@ var (
 	pingRe = regexp.MustCompile(`time=([0-9.]+)\s*ms`)
 	// ping header: PING google.com (142.250.185.46) 56(84) bytes of data.
 	pingHeaderRe = regexp.MustCompile(`^PING\s+(\S+)`)
-	// vmstat header line (contains "procs" or "r  b" etc.)
-	vmstatHeaderRe = regexp.MustCompile(`^\s*(procs|r\s+b\s+)`)
-	// iostat device line
-	iostatHeaderRe = regexp.MustCompile(`^(avg-cpu|Device)`)
 	// Generic: any floating point number
 	floatRe = regexp.MustCompile(`[-+]?[0-9]*\.?[0-9]+`)
 )
 
-// DetectStream examines a line for stream metadata (headers from known tools).
-// Returns non-nil StreamInfo if the line is a recognized header, nil otherwise.
+// DetectStream examines a line for ping stream metadata.
+// Returns non-nil StreamInfo if the line is a recognized ping header.
 func DetectStream(line string) *StreamInfo {
 	line = strings.TrimSpace(line)
 
-	// PING google.com (142.250.185.46) 56(84) bytes of data.
 	if m := pingHeaderRe.FindStringSubmatch(line); m != nil {
 		host := m[1]
 		return &StreamInfo{
@@ -34,26 +29,6 @@ func DetectStream(line string) *StreamInfo {
 			XLabel: "time",
 			YLabel: host + " latency",
 			Unit:   "ms",
-		}
-	}
-
-	// vmstat header
-	if vmstatHeaderRe.MatchString(line) {
-		return &StreamInfo{
-			Source: "vmstat",
-			XLabel: "time",
-			YLabel: "value",
-			Unit:   "",
-		}
-	}
-
-	// iostat header
-	if iostatHeaderRe.MatchString(line) {
-		return &StreamInfo{
-			Source: "iostat",
-			XLabel: "time",
-			YLabel: "value",
-			Unit:   "",
 		}
 	}
 
@@ -150,17 +125,7 @@ func ParseText(text string, delimiter string, headerMode int, skipLines int) (*D
 	return ds, nil
 }
 
-func splitLines(text string) []string {
-	raw := strings.Split(text, "\n")
-	lines := make([]string, 0, len(raw))
-	for _, l := range raw {
-		l = strings.TrimSpace(l)
-		if l != "" {
-			lines = append(lines, l)
-		}
-	}
-	return lines
-}
+
 
 func splitFields(line string, delim string) []string {
 	switch delim {

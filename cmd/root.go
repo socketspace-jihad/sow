@@ -35,6 +35,8 @@ var (
 	flagPattern   string
 	flagSkip      int
 	flagRowStream int
+	flagRowMode   string
+	flagAddHeader []string
 )
 
 var rootCmd = &cobra.Command{
@@ -73,6 +75,8 @@ func init() {
 	rootCmd.PersistentFlags().StringVarP(&flagPattern, "pattern", "p", "", "Pattern for parsing log lines: {label}={value}")
 	rootCmd.PersistentFlags().IntVar(&flagSkip, "skip", 0, "Skip first N lines of input before parsing")
 	rootCmd.PersistentFlags().IntVar(&flagRowStream, "row-stream", 0, "Group every N data lines as separate overlay series")
+	rootCmd.PersistentFlags().StringVar(&flagRowMode, "row-mode", "overlay", "Row-stream display: overlay or stack")
+	rootCmd.PersistentFlags().StringSliceVar(&flagAddHeader, "add-header", nil, "Define column names manually (repeatable, no header line expected)")
 }
 
 // SetVersion sets version info from ldflags.
@@ -98,9 +102,11 @@ func runChart(chartType string, args []string) error {
 		Height:    flagHeight,
 		Theme:     th,
 		Live:      flagLive,
-		YMin:     flagYMin,
-		YMax:     flagYMax,
-		PieStyle: flagPieStyle,
+		YMin:       flagYMin,
+		YMax:       flagYMax,
+		PieStyle:   flagPieStyle,
+		RowMode:    flagRowMode,
+		HiddenRows: make(map[string]bool),
 	}
 
 	cfg.FixScale = flagFixScale
@@ -174,7 +180,7 @@ func runStatic(cfg *chart.Config, args []string) error {
 		})
 	}
 
-	m := chart.NewModel(cfg, ds, nil)
+	m := chart.NewModel(cfg, ds, nil, nil)
 	p := tea.NewProgram(m, tea.WithAltScreen())
 	_, err = p.Run()
 	return err
@@ -195,7 +201,7 @@ func runLive(cfg *chart.Config) error {
 		}
 	}
 
-	lp := data.NewLiveParser(cfg.YCol, patternParser, flagSkip, flagRowStream)
+	lp := data.NewLiveParser(cfg.YCol, patternParser, flagSkip, flagRowStream, flagHeader, flagAddHeader)
 
 	go func() {
 		defer close(ch)
@@ -228,27 +234,13 @@ func runLive(cfg *chart.Config) error {
 		}
 	}()
 
-	// Wait briefly for stream/column detection before starting TUI
+	// Wait briefly for stream info (ping header, etc.) but not for columns
+	// Columns arrive dynamically via colsCh → model
 	var streamInfo *data.StreamInfo
-	timeout := time.After(500 * time.Millisecond)
-	for {
-		select {
-		case info := <-infoCh:
-			streamInfo = &info
-			continue
-		case cols := <-colsCh:
-			cfg.LiveColumns = cols
-			if cfg.YLabel == "" && len(cols) > 0 {
-				if cfg.YCol != "" && cfg.YCol != "0" && cfg.YCol != "1" {
-					cfg.YLabel = cfg.YCol
-				} else {
-					cfg.YLabel = strings.Join(cols, ", ")
-				}
-			}
-			continue
-		case <-timeout:
-		}
-		break
+	select {
+	case info := <-infoCh:
+		streamInfo = &info
+	case <-time.After(500 * time.Millisecond):
 	}
 
 	if streamInfo != nil {
@@ -270,7 +262,7 @@ func runLive(cfg *chart.Config) error {
 		cfg.YLabel = "value"
 	}
 
-	m := chart.NewModel(cfg, nil, ch)
+	m := chart.NewModel(cfg, nil, ch, colsCh)
 	p := tea.NewProgram(m, tea.WithAltScreen())
 	_, err := p.Run()
 	return err

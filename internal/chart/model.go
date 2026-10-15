@@ -14,6 +14,7 @@ import (
 )
 
 type dataMsg data.DataPoint
+type colsMsg []string // detected column names from live stream
 
 type liveStats struct {
 	count   int
@@ -70,6 +71,7 @@ type Model struct {
 	cfg      *Config
 	ds       *data.DataSet
 	liveCh   <-chan data.DataPoint
+	colsCh   <-chan []string // receives detected columns from LiveParser
 	renderer Renderer
 	width    int
 	height   int
@@ -85,19 +87,24 @@ type Model struct {
 	liveLabelsAt map[string]int    // label → color index
 }
 
-func NewModel(cfg *Config, ds *data.DataSet, liveCh <-chan data.DataPoint) Model {
+func NewModel(cfg *Config, ds *data.DataSet, liveCh <-chan data.DataPoint, colsCh <-chan []string) Model {
 	return Model{
 		cfg:    cfg,
 		ds:     ds,
 		liveCh: liveCh,
+		colsCh: colsCh,
 	}
 }
 
 func (m Model) Init() tea.Cmd {
+	var cmds []tea.Cmd
 	if m.liveCh != nil {
-		return waitForData(m.liveCh)
+		cmds = append(cmds, waitForData(m.liveCh))
 	}
-	return nil
+	if m.colsCh != nil {
+		cmds = append(cmds, waitForCols(m.colsCh))
+	}
+	return tea.Batch(cmds...)
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -115,6 +122,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleResize(msg)
 	case dataMsg:
 		return m.handleData(msg)
+	case colsMsg:
+		return m.handleCols(msg)
 	}
 	return m, nil
 }
@@ -143,6 +152,10 @@ func (m Model) View() string {
 
 	if len(m.cfg.Overlays) > 0 || len(m.liveLabels) > 1 {
 		b.WriteString(m.overlayLegendView())
+		if len(m.liveLabels) > 1 {
+			b.WriteString("  ")
+			b.WriteString(m.cfg.Theme.Axis.Render("[" + m.cfg.RowMode + "]"))
+		}
 		b.WriteString("\n")
 	}
 
@@ -164,7 +177,7 @@ func (m Model) View() string {
 		if m.showHelp {
 			b.WriteString(m.helpView())
 		} else {
-			b.WriteString(m.cfg.Theme.Help.Render("  ? help  q quit  tab switch  t theme  y column  o overlay  c config"))
+			b.WriteString(m.cfg.Theme.Help.Render("  ? help  q quit  tab switch  t theme  y column  o overlay  O manage  s stack  c config"))
 		}
 	}
 
@@ -274,9 +287,19 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.modal = modal{mode: modalOverlay}
 		return m, nil
 	case "O":
-		if len(m.cfg.Overlays) > 0 {
+		// Open manage modal if there are overlays or live row-stream labels
+		if len(m.cfg.Overlays) > 0 || len(m.liveLabels) > 1 {
 			m.modal = modal{mode: modalManage}
 		}
+		return m, nil
+	case "s":
+		// Toggle row-stream mode: overlay ↔ stack
+		if m.cfg.RowMode == "stack" {
+			m.cfg.RowMode = "overlay"
+		} else {
+			m.cfg.RowMode = "stack"
+		}
+		m.rebuildFromBuffer()
 		return m, nil
 	case "c":
 		m.modal = modal{mode: modalConfig}
@@ -453,11 +476,29 @@ func (m Model) overlayModalView() string {
 	return strings.Join(lines, "\n")
 }
 
-// --- Manage overlays modal ---
+// --- Manage overlays / row-stream modal ---
+
+func (m Model) manageItems() []string {
+	// Static overlays first, then live row-stream labels
+	var items []string
+	for _, ov := range m.cfg.Overlays {
+		items = append(items, "overlay:"+ov.Name)
+	}
+	for _, label := range m.liveLabels {
+		items = append(items, "row:"+label)
+	}
+	return items
+}
 
 func (m Model) handleManageModalKey(key string) (tea.Model, tea.Cmd) {
+	items := m.manageItems()
+	if len(items) == 0 {
+		m.modal.mode = modalNone
+		return m, nil
+	}
+
 	switch key {
-	case "esc", "ctrl+c", "enter":
+	case "esc", "ctrl+c":
 		m.modal.mode = modalNone
 		return m, nil
 	case "up", "k":
@@ -466,18 +507,31 @@ func (m Model) handleManageModalKey(key string) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case "down", "j":
-		if m.modal.selectIdx < len(m.cfg.Overlays)-1 {
+		if m.modal.selectIdx < len(items)-1 {
 			m.modal.selectIdx++
 		}
 		return m, nil
+	case " ", "enter":
+		// Toggle show/hide for row-stream labels
+		if m.modal.selectIdx < len(items) {
+			item := items[m.modal.selectIdx]
+			if strings.HasPrefix(item, "row:") {
+				label := strings.TrimPrefix(item, "row:")
+				if m.cfg.HiddenRows[label] {
+					delete(m.cfg.HiddenRows, label)
+				} else {
+					m.cfg.HiddenRows[label] = true
+				}
+				m.rebuildFromBuffer()
+			}
+		}
+		return m, nil
 	case "d", "backspace", "delete":
+		// Remove static overlays
 		if m.modal.selectIdx < len(m.cfg.Overlays) {
 			m.cfg.Overlays = append(m.cfg.Overlays[:m.modal.selectIdx], m.cfg.Overlays[m.modal.selectIdx+1:]...)
-			if m.modal.selectIdx >= len(m.cfg.Overlays) && m.modal.selectIdx > 0 {
+			if m.modal.selectIdx >= len(items)-1 && m.modal.selectIdx > 0 {
 				m.modal.selectIdx--
-			}
-			if len(m.cfg.Overlays) == 0 {
-				m.modal.mode = modalNone
 			}
 			m.rebuildFromBuffer()
 		}
@@ -487,26 +541,50 @@ func (m Model) handleManageModalKey(key string) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) manageModalView() string {
+	items := m.manageItems()
 	dim := m.cfg.Theme.Axis
 	bright := m.cfg.Theme.Title
 	fg := lipgloss.NewStyle().Foreground(m.cfg.Theme.Foreground)
 
+	modeLabel := dim.Render("mode:" + m.cfg.RowMode)
 	lines := []string{
 		"",
-		"  " + bright.Render("Manage Overlays") + dim.Render("  (d=remove  esc=close)"),
+		"  " + bright.Render("Manage Series") + dim.Render("  (space=toggle  d=remove  s=stack/overlay  esc=close)"),
+		"  " + modeLabel,
 		"",
 	}
-	for i, ov := range m.cfg.Overlays {
-		colorIdx := ov.Color % len(m.cfg.Theme.Colors)
-		dot := lipgloss.NewStyle().Foreground(m.cfg.Theme.Colors[colorIdx]).Render("●")
-		marker := "  "
+
+	for i, item := range items {
+		marker := "    "
 		if i == m.modal.selectIdx {
-			marker = fg.Render("> ")
+			marker = "  " + fg.Render("> ")
 		}
-		lines = append(lines, fmt.Sprintf("  %s%s %s %s",
-			marker, dot, fg.Render(ov.Name),
-			dim.Render(fmt.Sprintf("(col %d)", ov.ColIdx))))
+
+		if strings.HasPrefix(item, "overlay:") {
+			name := strings.TrimPrefix(item, "overlay:")
+			// Find color
+			colorIdx := 0
+			for _, ov := range m.cfg.Overlays {
+				if ov.Name == name {
+					colorIdx = ov.Color
+					break
+				}
+			}
+			dot := lipgloss.NewStyle().Foreground(m.cfg.Theme.Colors[colorIdx%len(m.cfg.Theme.Colors)]).Render("●")
+			lines = append(lines, fmt.Sprintf("%s%s %s %s", marker, dot, fg.Render(name), dim.Render("(overlay)")))
+		} else if strings.HasPrefix(item, "row:") {
+			label := strings.TrimPrefix(item, "row:")
+			colorIdx := m.liveLabelsAt[label] % len(m.cfg.Theme.Colors)
+			dot := lipgloss.NewStyle().Foreground(m.cfg.Theme.Colors[colorIdx]).Render("●")
+			visible := "visible"
+			if m.cfg.HiddenRows[label] {
+				visible = "hidden"
+				dot = dim.Render("○")
+			}
+			lines = append(lines, fmt.Sprintf("%s%s %s %s", marker, dot, fg.Render(label), dim.Render("("+visible+")")))
+		}
 	}
+
 	lines = append(lines, "")
 	return strings.Join(lines, "\n")
 }
@@ -748,6 +826,8 @@ func (m Model) configFieldValue(name string) string {
 		return "auto"
 	case "pie-style":
 		return m.cfg.PieStyle
+	case "row-mode":
+		return m.cfg.RowMode
 	}
 	return ""
 }
@@ -772,6 +852,10 @@ func (m *Model) applyConfigField(name string, value string) {
 	case "pie-style":
 		if value == "bar" || value == "circle" {
 			m.cfg.PieStyle = value
+		}
+	case "row-mode":
+		if value == "overlay" || value == "stack" {
+			m.cfg.RowMode = value
 		}
 	}
 }
@@ -978,8 +1062,9 @@ func (m Model) helpView() string {
 		s.Render("  t           ") + fg.Render("Cycle color theme"),
 		s.Render("  r           ") + fg.Render("Redraw chart"),
 		s.Render("  y           ") + fg.Render("Select Y column"),
+		s.Render("  s           ") + fg.Render("Toggle overlay/stack mode"),
 		s.Render("  o           ") + fg.Render("Add overlay series"),
-		s.Render("  O           ") + fg.Render("Manage/remove overlays"),
+		s.Render("  O           ") + fg.Render("Manage series (show/hide rows)"),
 		s.Render("  c           ") + fg.Render("Open configuration"),
 		s.Render("  ?           ") + fg.Render("Toggle this help"),
 		"",
@@ -990,6 +1075,14 @@ func (m Model) helpView() string {
 	return strings.Join(lines, "\n")
 }
 
+func (m Model) handleCols(msg colsMsg) (tea.Model, tea.Cmd) {
+	m.cfg.LiveColumns = []string(msg)
+	if m.cfg.YLabel == "" || m.cfg.YLabel == "value" {
+		m.cfg.YLabel = strings.Join(m.cfg.LiveColumns, ", ")
+	}
+	return m, nil
+}
+
 func waitForData(ch <-chan data.DataPoint) tea.Cmd {
 	return func() tea.Msg {
 		dp, ok := <-ch
@@ -997,5 +1090,15 @@ func waitForData(ch <-chan data.DataPoint) tea.Cmd {
 			return nil
 		}
 		return dataMsg(dp)
+	}
+}
+
+func waitForCols(ch <-chan []string) tea.Cmd {
+	return func() tea.Msg {
+		cols, ok := <-ch
+		if !ok {
+			return nil
+		}
+		return colsMsg(cols)
 	}
 }

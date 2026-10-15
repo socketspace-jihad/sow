@@ -218,11 +218,11 @@ func TestFixedScale(t *testing.T) {
 }
 
 func TestConfigFieldsPerChart(t *testing.T) {
-	// Scale charts should have ymin/ymax
+	// Scale charts should have ymin/ymax/row-mode
 	for _, ct := range []string{TypeBar, TypeHBar, TypeLine, TypeScatter, TypeSparkline, TypeStreamline} {
 		fields := ConfigFields(ct)
-		if len(fields) != 2 || fields[0] != "ymin" || fields[1] != "ymax" {
-			t.Errorf("ConfigFields(%q) = %v, want [ymin ymax]", ct, fields)
+		if len(fields) != 3 || fields[0] != "ymin" || fields[1] != "ymax" || fields[2] != "row-mode" {
+			t.Errorf("ConfigFields(%q) = %v, want [ymin ymax row-mode]", ct, fields)
 		}
 	}
 

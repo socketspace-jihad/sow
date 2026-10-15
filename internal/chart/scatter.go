@@ -92,6 +92,9 @@ func (r *ScatterRenderer) Setup(ds *data.DataSet, cfg *Config, width, height int
 
 func (r *ScatterRenderer) Push(dp data.DataPoint) {
 	label := dp.Label
+	if label != "" && r.cfg.HiddenRows[label] {
+		return
+	}
 	if label == "" || label == r.cfg.YLabel {
 		r.chart.Plot(canvas.Float64Point{X: r.count, Y: dp.Value})
 		r.count++

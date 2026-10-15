@@ -15,9 +15,10 @@ type LineRenderer struct {
 	width      int
 	height     int
 	count      float64
-	rowCounts  map[string]float64 // per-row X counters
+	rowCounts  map[string]float64
 	knownRows  map[string]bool
 	colorIndex int
+	stackSum   float64
 }
 
 func (r *LineRenderer) Setup(ds *data.DataSet, cfg *Config, width, height int) {
@@ -104,11 +105,22 @@ func (r *LineRenderer) Setup(ds *data.DataSet, cfg *Config, width, height int) {
 
 func (r *LineRenderer) Push(dp data.DataPoint) {
 	label := dp.Label
+
+	// Skip hidden rows
+	if label != "" && r.cfg.HiddenRows[label] {
+		return
+	}
+
+	if r.cfg.RowMode == "stack" {
+		r.pushStack(dp)
+		return
+	}
+
+	// Overlay mode
 	if label == "" || label == r.cfg.YLabel {
 		r.chart.Plot(canvas.Float64Point{X: r.count, Y: dp.Value})
 		r.count++
 	} else {
-		// Multi-row: route to named dataset
 		if !r.knownRows[label] {
 			r.knownRows[label] = true
 			colorIdx := r.colorIndex % len(r.cfg.Theme.Colors)
@@ -121,6 +133,19 @@ func (r *LineRenderer) Push(dp data.DataPoint) {
 		r.rowCounts[label] = x + 1
 	}
 	r.chart.DrawAll()
+}
+
+func (r *LineRenderer) pushStack(dp data.DataPoint) {
+	if dp.Row == 0 && r.count > 0 {
+		r.chart.DrawAll()
+	}
+	// Stack: accumulate Y at the same X position
+	r.chart.Plot(canvas.Float64Point{X: r.count, Y: dp.Value + r.stackSum})
+	r.stackSum += dp.Value
+	if dp.Row == 0 {
+		r.stackSum = 0
+		r.count++
+	}
 }
 
 func (r *LineRenderer) Resize(width, height int) {

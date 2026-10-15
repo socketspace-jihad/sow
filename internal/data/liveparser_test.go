@@ -2,12 +2,12 @@ package data
 
 import "testing"
 
-func TestLiveParserPidstat(t *testing.T) {
-	lp := NewLiveParser("", nil, 0, 0)
+func TestLiveParserWithHeader(t *testing.T) {
+	// pidstat -r: --skip 2 --header (skip "Linux..." and blank line, next line is header)
+	lp := NewLiveParser("", nil, 2, 0, true, nil)
 
-	// pidstat -r output
 	lines := []string{
-		"Linux 5.4.0-42-generic (host) \t10/15/2026 \t_x86_64_\t(8 CPU)",
+		"Linux 5.4.0-42-generic (host) \t10/15/2026",
 		"",
 		"02:30:01 PM   UID       PID  minflt/s  majflt/s     VSZ     RSS   %MEM  Command",
 		"02:30:02 PM  1000     34405     12.00      0.00  123456   45678   1.23  myapp",
@@ -21,32 +21,29 @@ func TestLiveParserPidstat(t *testing.T) {
 	}
 
 	cols := lp.Columns()
-	if len(cols) == 0 {
-		t.Fatal("expected columns to be detected")
-	}
-
-	// Should have detected columns like UID, PID, minflt/s, etc.
-	t.Logf("detected columns: %v", cols)
+	t.Logf("columns: %v", cols)
 	t.Logf("total points: %d", len(allPoints))
 
+	if len(cols) == 0 {
+		t.Fatal("expected columns from --header")
+	}
 	if len(allPoints) == 0 {
 		t.Fatal("expected data points")
 	}
 
-	// Should have multiple columns per data line, not just %MEM
 	labels := make(map[string]bool)
 	for _, dp := range allPoints {
 		labels[dp.Label] = true
 	}
-	t.Logf("unique labels: %v", labels)
-
+	t.Logf("labels: %v", labels)
 	if len(labels) < 3 {
-		t.Errorf("expected multiple columns as labels, got only %d: %v", len(labels), labels)
+		t.Errorf("expected multiple column labels, got %d", len(labels))
 	}
 }
 
-func TestLiveParserPidstatWithY(t *testing.T) {
-	lp := NewLiveParser("VSZ", nil, 0, 0)
+func TestLiveParserWithHeaderAndY(t *testing.T) {
+	// --header --y VSZ
+	lp := NewLiveParser("VSZ", nil, 0, 0, true, nil)
 
 	lines := []string{
 		"02:30:01 PM   UID       PID  minflt/s  majflt/s     VSZ     RSS   %MEM  Command",
@@ -70,25 +67,47 @@ func TestLiveParserPidstatWithY(t *testing.T) {
 	}
 }
 
-func TestLiveParserSingleNumbers(t *testing.T) {
-	lp := NewLiveParser("", nil, 0, 0)
+func TestLiveParserAddHeader(t *testing.T) {
+	// --add-header name --add-header value (no header line, all data)
+	lp := NewLiveParser("value", nil, 0, 0, false, []string{"name", "value"})
+
+	lines := []string{
+		"alpha 10",
+		"beta 20",
+		"gamma 30",
+	}
+
+	var allPoints []DataPoint
+	for _, line := range lines {
+		points := lp.Feed(line)
+		allPoints = append(allPoints, points...)
+	}
+
+	t.Logf("columns: %v", lp.Columns())
+	if len(allPoints) != 3 {
+		t.Fatalf("expected 3 points, got %d", len(allPoints))
+	}
+	if allPoints[0].Value != 10 {
+		t.Errorf("expected 10, got %f", allPoints[0].Value)
+	}
+}
+
+func TestLiveParserNoHeader(t *testing.T) {
+	// No --header, no --add-header → fallback to ParseLine
+	lp := NewLiveParser("", nil, 0, 0, false, nil)
 
 	points := lp.Feed("42.7")
-	// Might be buffered waiting for header detection
 	points = append(points, lp.Feed("38.2")...)
 	points = append(points, lp.Feed("50.1")...)
-	points = append(points, lp.Feed("45.0")...)
-	points = append(points, lp.Feed("32.5")...)
 
-	if len(points) == 0 {
-		t.Error("expected data points for plain numbers")
+	if len(points) != 3 {
+		t.Errorf("expected 3 points from fallback, got %d", len(points))
 	}
 }
 
 func TestLiveParserPingPassthrough(t *testing.T) {
-	lp := NewLiveParser("", nil, 0, 0)
+	lp := NewLiveParser("", nil, 0, 0, false, nil)
 
-	// Ping header
 	points := lp.Feed("PING google.com (142.250.185.46) 56(84) bytes of data.")
 	if len(points) != 0 {
 		t.Error("ping header should not produce data points")
@@ -102,15 +121,15 @@ func TestLiveParserPingPassthrough(t *testing.T) {
 		t.Errorf("expected source 'ping', got %q", info.Source)
 	}
 
-	// Ping data line — should fall through to ParseLine
 	points = lp.Feed("64 bytes from lax17s55-in-f14.1e100.net: icmp_seq=1 ttl=117 time=28.3 ms")
 	if len(points) == 0 {
 		t.Error("expected data point for ping data line")
 	}
 }
 
-func TestLiveParserVmstat(t *testing.T) {
-	lp := NewLiveParser("", nil, 0, 0)
+func TestLiveParserVmstatWithHeader(t *testing.T) {
+	// vmstat: --skip 1 --header (skip "procs..." line, next is column names)
+	lp := NewLiveParser("", nil, 1, 0, true, nil)
 
 	lines := []string{
 		"procs -----------memory---------- ---swap-- -----io---- -system-- ------cpu-----",
@@ -124,17 +143,18 @@ func TestLiveParserVmstat(t *testing.T) {
 		allPoints = append(allPoints, points...)
 	}
 
+	t.Logf("columns: %v", lp.Columns())
+	t.Logf("total points: %d", len(allPoints))
+
 	if len(allPoints) == 0 {
-		t.Fatal("expected data points for vmstat")
+		t.Fatal("expected data points for vmstat with --header")
 	}
 
 	labels := make(map[string]bool)
 	for _, dp := range allPoints {
 		labels[dp.Label] = true
 	}
-	t.Logf("vmstat labels: %v", labels)
-
-	// Should have multiple columns: r, b, swpd, free, etc.
+	t.Logf("labels: %v", labels)
 	if len(labels) < 5 {
 		t.Errorf("expected many vmstat columns, got %d", len(labels))
 	}

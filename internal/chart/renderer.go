@@ -46,11 +46,11 @@ func NewRenderer(chartType string) Renderer {
 func ConfigFields(chartType string) []string {
 	switch chartType {
 	case TypeBar, TypeHBar:
-		return []string{"ymin", "ymax"}
+		return []string{"ymin", "ymax", "row-mode"}
 	case TypeLine, TypeScatter, TypeDot:
-		return []string{"ymin", "ymax"}
+		return []string{"ymin", "ymax", "row-mode"}
 	case TypeSparkline, TypeStreamline:
-		return []string{"ymin", "ymax"}
+		return []string{"ymin", "ymax", "row-mode"}
 	case TypePie:
 		return []string{"pie-style"}
 	case TypeHeatmap:
@@ -68,6 +68,8 @@ func ConfigFieldOptions(name string) []string {
 	switch name {
 	case "pie-style":
 		return []string{"bar", "circle"}
+	case "row-mode":
+		return []string{"overlay", "stack"}
 	}
 	return nil
 }

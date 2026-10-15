@@ -232,7 +232,7 @@ func runMonitor(profile *data.ToolProfile, toolArgs []string) error {
 		}
 	}()
 
-	m := chart.NewModel(cfg, nil, ch)
+	m := chart.NewModel(cfg, nil, ch, nil)
 	p := tea.NewProgram(m, tea.WithAltScreen())
 	_, err = p.Run()
 

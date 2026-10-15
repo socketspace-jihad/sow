@@ -32,6 +32,10 @@ type Config struct {
 	// LiveColumns stores detected column names from piped tabular data.
 	LiveColumns []string
 
+	// Row-stream display options
+	RowMode    string            // "overlay" (default) or "stack"
+	HiddenRows map[string]bool   // rows to hide (toggled interactively)
+
 	// Overlay configuration
 	Overlays []OverlayConfig
 }
