@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/NimbleMarkets/ntcharts/heatmap"
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/socketspace-jihad/sow/internal/data"
 )
@@ -71,6 +72,8 @@ func (r *HeatmapRenderer) Resize(width, height int) {
 	r.chart.Resize(r.width, r.height)
 	r.chart.Draw()
 }
+
+func (r *HeatmapRenderer) HandleKey(msg tea.KeyMsg) bool { return false }
 
 func (r *HeatmapRenderer) View() string {
 	var b strings.Builder

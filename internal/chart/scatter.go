@@ -4,6 +4,7 @@ import (
 	"github.com/NimbleMarkets/ntcharts/canvas"
 	"github.com/NimbleMarkets/ntcharts/canvas/runes"
 	"github.com/NimbleMarkets/ntcharts/linechart/wavelinechart"
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/socketspace-jihad/sow/internal/data"
 )
@@ -96,6 +97,8 @@ func (r *ScatterRenderer) Resize(width, height int) {
 	r.chart.Resize(width, height)
 	r.chart.DrawAll()
 }
+
+func (r *ScatterRenderer) HandleKey(msg tea.KeyMsg) bool { return false }
 
 func (r *ScatterRenderer) View() string {
 	return r.chart.View()

@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/charmbracelet/bubbles/table"
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/socketspace-jihad/sow/internal/data"
 )
 
@@ -24,12 +25,14 @@ func (r *TableRenderer) Setup(ds *data.DataSet, cfg *Config, width, height int) 
 		return
 	}
 
-	// Determine columns
 	numCols := 0
 	if len(ds.Headers) > 0 {
 		numCols = len(ds.Headers)
 	} else if len(ds.Rows) > 0 {
 		numCols = len(ds.Rows[0])
+	}
+	if numCols == 0 {
+		return
 	}
 
 	colWidth := (width - 4) / numCols
@@ -57,11 +60,16 @@ func (r *TableRenderer) Setup(ds *data.DataSet, cfg *Config, width, height int) 
 		rows[i] = r
 	}
 
+	h := height - 4
+	if h < 3 {
+		h = 3
+	}
+
 	t := table.New(
 		table.WithColumns(cols),
 		table.WithRows(rows),
 		table.WithFocused(true),
-		table.WithHeight(height-4),
+		table.WithHeight(h),
 	)
 
 	s := table.DefaultStyles()
@@ -81,20 +89,56 @@ func (r *TableRenderer) Setup(ds *data.DataSet, cfg *Config, width, height int) 
 }
 
 func (r *TableRenderer) Push(dp data.DataPoint) {
-	// Tables don't support live push well - ignore
+	if !r.ready {
+		return
+	}
+	// Append new row to the table
+	label := dp.Label
+	if label == "" {
+		label = dp.Time.Format("15:04:05")
+	}
+	newRow := table.Row{label, fmt.Sprintf("%.2f", dp.Value)}
+	rows := r.table.Rows()
+	rows = append(rows, newRow)
+	r.table.SetRows(rows)
 }
 
 func (r *TableRenderer) Resize(width, height int) {
 	r.width = width
 	r.height = height
 	if r.ready {
-		r.table.SetHeight(height - 4)
+		h := height - 4
+		if h < 3 {
+			h = 3
+		}
+		r.table.SetHeight(h)
 	}
+}
+
+func (r *TableRenderer) HandleKey(msg tea.KeyMsg) bool {
+	if !r.ready {
+		return false
+	}
+	switch msg.String() {
+	case "up", "k":
+		r.table.MoveUp(1)
+		return true
+	case "down", "j":
+		r.table.MoveDown(1)
+		return true
+	case "home", "g":
+		r.table.GotoTop()
+		return true
+	case "end", "G":
+		r.table.GotoBottom()
+		return true
+	}
+	return false
 }
 
 func (r *TableRenderer) View() string {
 	if !r.ready {
-		return "No data"
+		return "  No data for table view"
 	}
 	return r.table.View()
 }

@@ -3,6 +3,7 @@ package chart
 import (
 	"github.com/NimbleMarkets/ntcharts/canvas/runes"
 	"github.com/NimbleMarkets/ntcharts/linechart/streamlinechart"
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/socketspace-jihad/sow/internal/data"
 )
@@ -59,6 +60,8 @@ func (r *StreamlineRenderer) Resize(width, height int) {
 	r.chart.Resize(width, height)
 	r.chart.DrawAll()
 }
+
+func (r *StreamlineRenderer) HandleKey(msg tea.KeyMsg) bool { return false }
 
 func (r *StreamlineRenderer) View() string {
 	return r.chart.View()

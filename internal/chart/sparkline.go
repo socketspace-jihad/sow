@@ -2,6 +2,7 @@ package chart
 
 import (
 	"github.com/NimbleMarkets/ntcharts/sparkline"
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/socketspace-jihad/sow/internal/data"
 )
@@ -41,6 +42,8 @@ func (r *SparklineRenderer) Resize(width, height int) {
 	r.chart.Resize(width, height)
 	r.chart.Draw()
 }
+
+func (r *SparklineRenderer) HandleKey(msg tea.KeyMsg) bool { return false }
 
 func (r *SparklineRenderer) View() string {
 	return r.chart.View()

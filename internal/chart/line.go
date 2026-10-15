@@ -4,6 +4,7 @@ import (
 	"github.com/NimbleMarkets/ntcharts/canvas"
 	"github.com/NimbleMarkets/ntcharts/canvas/runes"
 	"github.com/NimbleMarkets/ntcharts/linechart/wavelinechart"
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/socketspace-jihad/sow/internal/data"
 )
@@ -110,6 +111,8 @@ func (r *LineRenderer) Resize(width, height int) {
 	r.chart.Resize(width, height)
 	r.chart.DrawAll()
 }
+
+func (r *LineRenderer) HandleKey(msg tea.KeyMsg) bool { return false }
 
 func (r *LineRenderer) View() string {
 	return r.chart.View()

@@ -216,3 +216,47 @@ func TestFixedScale(t *testing.T) {
 		t.Error("line with fixed scale produced empty view")
 	}
 }
+
+func TestConfigFieldsPerChart(t *testing.T) {
+	// Scale charts should have ymin/ymax
+	for _, ct := range []string{TypeBar, TypeHBar, TypeLine, TypeScatter, TypeSparkline, TypeStreamline} {
+		fields := ConfigFields(ct)
+		if len(fields) != 2 || fields[0] != "ymin" || fields[1] != "ymax" {
+			t.Errorf("ConfigFields(%q) = %v, want [ymin ymax]", ct, fields)
+		}
+	}
+
+	// Pie should have pie-style only
+	fields := ConfigFields(TypePie)
+	if len(fields) != 1 || fields[0] != "pie-style" {
+		t.Errorf("ConfigFields(pie) = %v, want [pie-style]", fields)
+	}
+
+	// Table and heatmap should have no config
+	for _, ct := range []string{TypeTable, TypeHeatmap} {
+		fields := ConfigFields(ct)
+		if len(fields) != 0 {
+			t.Errorf("ConfigFields(%q) = %v, want []", ct, fields)
+		}
+	}
+}
+
+func TestTableLiveBuffer(t *testing.T) {
+	r := NewRenderer(TypeTable)
+	cfg := testConfig()
+
+	// Build a dataset from "live" data (simulating dataSetFromBuffer)
+	ds := &data.DataSet{
+		Headers: []string{"Time", "Label", "Value"},
+		Rows: [][]string{
+			{"12:00:01", "ping", "28.30"},
+			{"12:00:02", "ping", "31.50"},
+			{"12:00:03", "ping", "25.10"},
+		},
+	}
+	r.Setup(ds, cfg, 60, 20)
+	view := r.View()
+	if view == "" || view == "  No data for table view" {
+		t.Error("table with live buffer data should render content")
+	}
+}

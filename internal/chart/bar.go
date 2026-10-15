@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/NimbleMarkets/ntcharts/barchart"
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/socketspace-jihad/sow/internal/data"
 )
@@ -104,6 +105,8 @@ func (r *BarRenderer) Resize(width, height int) {
 	r.chart.Resize(width, height)
 	r.chart.Draw()
 }
+
+func (r *BarRenderer) HandleKey(msg tea.KeyMsg) bool { return false }
 
 func (r *BarRenderer) View() string {
 	return r.chart.View()

@@ -101,6 +101,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.modal.mode != modalNone {
 			return m.handleModalKey(msg)
 		}
+		// Forward to renderer first (e.g., table scrolling)
+		if m.renderer != nil && m.renderer.HandleKey(msg) {
+			return m, nil
+		}
 		return m.handleKey(msg)
 	case tea.WindowSizeMsg:
 		return m.handleResize(msg)
@@ -256,7 +260,12 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case "c":
-		m.modal = modal{mode: modalConfig}
+		fields := ConfigFields(m.cfg.ChartType)
+		initInput := ""
+		if len(fields) > 0 {
+			initInput = m.configFieldValue(fields[0])
+		}
+		m.modal = modal{mode: modalConfig, input: initInput}
 		return m, nil
 	}
 	return m, nil
@@ -432,11 +441,19 @@ func (m Model) manageModalView() string {
 	return strings.Join(lines, "\n")
 }
 
-// --- Config modal ---
+// --- Config modal (per-chart-type) ---
 
-var configFields = []string{"ymin", "ymax", "pie-style", "chart-type"}
+func (m Model) chartConfigFields() []string {
+	return ConfigFields(m.cfg.ChartType)
+}
 
 func (m Model) handleConfigModalKey(key string) (tea.Model, tea.Cmd) {
+	fields := m.chartConfigFields()
+	if len(fields) == 0 {
+		m.modal.mode = modalNone
+		return m, nil
+	}
+
 	switch key {
 	case "esc", "ctrl+c":
 		m.modal.mode = modalNone
@@ -444,17 +461,17 @@ func (m Model) handleConfigModalKey(key string) (tea.Model, tea.Cmd) {
 	case "up", "k":
 		if m.modal.field > 0 {
 			m.modal.field--
-			m.modal.input = m.configFieldValue(m.modal.field)
+			m.modal.input = m.configFieldValue(fields[m.modal.field])
 		}
 		return m, nil
 	case "down", "j":
-		if m.modal.field < len(configFields)-1 {
+		if m.modal.field < len(fields)-1 {
 			m.modal.field++
-			m.modal.input = m.configFieldValue(m.modal.field)
+			m.modal.input = m.configFieldValue(fields[m.modal.field])
 		}
 		return m, nil
 	case "enter":
-		m.applyConfigField(m.modal.field, m.modal.input)
+		m.applyConfigField(fields[m.modal.field], m.modal.input)
 		m.rebuildFromBuffer()
 		return m, nil
 	case "backspace":
@@ -463,11 +480,10 @@ func (m Model) handleConfigModalKey(key string) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case "tab":
-		// Move to next field and apply current
-		m.applyConfigField(m.modal.field, m.modal.input)
-		if m.modal.field < len(configFields)-1 {
+		m.applyConfigField(fields[m.modal.field], m.modal.input)
+		if m.modal.field < len(fields)-1 {
 			m.modal.field++
-			m.modal.input = m.configFieldValue(m.modal.field)
+			m.modal.input = m.configFieldValue(fields[m.modal.field])
 		}
 		m.rebuildFromBuffer()
 		return m, nil
@@ -479,8 +495,8 @@ func (m Model) handleConfigModalKey(key string) (tea.Model, tea.Cmd) {
 	}
 }
 
-func (m Model) configFieldValue(field int) string {
-	switch configFields[field] {
+func (m Model) configFieldValue(name string) string {
+	switch name {
 	case "ymin":
 		if m.cfg.FixScale {
 			return fmt.Sprintf("%.1f", m.cfg.YMin)
@@ -493,15 +509,13 @@ func (m Model) configFieldValue(field int) string {
 		return "auto"
 	case "pie-style":
 		return m.cfg.PieStyle
-	case "chart-type":
-		return m.cfg.ChartType
 	}
 	return ""
 }
 
-func (m *Model) applyConfigField(field int, value string) {
+func (m *Model) applyConfigField(name string, value string) {
 	value = strings.TrimSpace(value)
-	switch configFields[field] {
+	switch name {
 	case "ymin":
 		if value == "auto" || value == "" {
 			m.cfg.FixScale = false
@@ -520,17 +534,11 @@ func (m *Model) applyConfigField(field int, value string) {
 		if value == "bar" || value == "circle" {
 			m.cfg.PieStyle = value
 		}
-	case "chart-type":
-		for _, t := range AllTypes() {
-			if t == value {
-				m.cfg.ChartType = value
-				break
-			}
-		}
 	}
 }
 
 func (m Model) configModalView() string {
+	fields := m.chartConfigFields()
 	dim := m.cfg.Theme.Axis
 	bright := m.cfg.Theme.Title
 	fg := lipgloss.NewStyle().Foreground(m.cfg.Theme.Foreground)
@@ -539,29 +547,39 @@ func (m Model) configModalView() string {
 		accent = lipgloss.NewStyle().Foreground(m.cfg.Theme.Colors[0])
 	}
 
+	chartLabel := m.cfg.ChartType
 	lines := []string{
 		"",
-		"  " + bright.Render("Configuration") + dim.Render("  (enter=apply  tab=next  esc=close)"),
+		"  " + bright.Render("Configuration ["+chartLabel+"]") + dim.Render("  (enter=apply  tab=next  esc=close)"),
 		"",
 	}
 
-	for i, name := range configFields {
-		marker := "  "
-		if i == m.modal.field {
-			marker = fg.Render("> ")
+	if len(fields) == 0 {
+		lines = append(lines, "  "+dim.Render("No configuration options for this chart type."))
+		lines = append(lines, "  "+dim.Render("Press esc to close."))
+	} else {
+		for i, name := range fields {
+			marker := "  "
+			if i == m.modal.field {
+				marker = fg.Render("> ")
+			}
+			val := m.configFieldValue(name)
+			if i == m.modal.field {
+				val = m.modal.input + "_"
+			}
+			lines = append(lines, fmt.Sprintf("  %s%s  %s",
+				marker, dim.Render(fmt.Sprintf("%-12s", name+":")), accent.Render(val)))
 		}
-
-		val := m.configFieldValue(i)
-		if i == m.modal.field {
-			val = m.modal.input + "_"
+		lines = append(lines, "")
+		// Show hint based on what fields are present
+		for _, f := range fields {
+			if f == "ymin" || f == "ymax" {
+				lines = append(lines, "  "+dim.Render("Type 'auto' for ymin/ymax to use auto-scaling"))
+				break
+			}
 		}
-
-		lines = append(lines, fmt.Sprintf("  %s%s  %s",
-			marker, dim.Render(fmt.Sprintf("%-12s", name+":")), accent.Render(val)))
 	}
 
-	lines = append(lines, "")
-	lines = append(lines, "  "+dim.Render("Type 'auto' for ymin/ymax to use auto-scaling"))
 	lines = append(lines, "")
 	return strings.Join(lines, "\n")
 }
@@ -627,15 +645,37 @@ func (m *Model) rebuildFromBuffer() {
 	m.renderer = NewRenderer(m.cfg.ChartType)
 
 	if m.cfg.Live && len(m.liveBuffer) > 0 {
-		// Setup with nil dataset, then replay buffer
-		m.renderer.Setup(nil, m.cfg, m.width, m.height)
-		for _, dp := range m.liveBuffer {
-			m.renderer.Push(dp)
+		// For table chart type, build a DataSet from the buffer
+		if m.cfg.ChartType == TypeTable {
+			ds := m.dataSetFromBuffer()
+			m.renderer.Setup(ds, m.cfg, m.width, m.height)
+		} else {
+			m.renderer.Setup(nil, m.cfg, m.width, m.height)
+			for _, dp := range m.liveBuffer {
+				m.renderer.Push(dp)
+			}
 		}
 	} else {
 		// Static mode — re-read from dataset
 		m.renderer.Setup(m.ds, m.cfg, m.width, m.height)
 	}
+}
+
+// dataSetFromBuffer builds a DataSet from the live buffer for renderers
+// that need tabular data (e.g., table).
+func (m *Model) dataSetFromBuffer() *data.DataSet {
+	ds := &data.DataSet{
+		Headers: []string{"Time", "Label", "Value"},
+	}
+	for _, dp := range m.liveBuffer {
+		ts := dp.Time.Format("15:04:05")
+		label := dp.Label
+		if label == "" {
+			label = "-"
+		}
+		ds.Rows = append(ds.Rows, []string{ts, label, fmt.Sprintf("%.2f", dp.Value)})
+	}
+	return ds
 }
 
 func (m Model) helpView() string {

@@ -5,6 +5,7 @@ import (
 	"math"
 	"strings"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/socketspace-jihad/sow/internal/data"
 )
@@ -39,6 +40,8 @@ func (r *PieRenderer) Resize(width, height int) {
 	r.width = width
 	r.height = height
 }
+
+func (r *PieRenderer) HandleKey(msg tea.KeyMsg) bool { return false }
 
 func (r *PieRenderer) View() string {
 	if len(r.values) == 0 {

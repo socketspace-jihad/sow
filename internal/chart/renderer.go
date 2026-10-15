@@ -1,17 +1,19 @@
 package chart
 
-import "github.com/socketspace-jihad/sow/internal/data"
+import (
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/socketspace-jihad/sow/internal/data"
+)
 
 // Renderer is the interface all chart types implement.
 type Renderer interface {
-	// Setup initializes with static data.
 	Setup(ds *data.DataSet, cfg *Config, width, height int)
-	// Push adds a live data point.
 	Push(dp data.DataPoint)
-	// Resize updates dimensions.
 	Resize(width, height int)
-	// View returns the rendered chart string.
 	View() string
+	// HandleKey forwards key events to renderers that need them (e.g., table scrolling).
+	// Returns true if the key was consumed.
+	HandleKey(msg tea.KeyMsg) bool
 }
 
 // NewRenderer creates a renderer for the given chart type.
@@ -37,5 +39,25 @@ func NewRenderer(chartType string) Renderer {
 		return &TableRenderer{}
 	default:
 		return &BarRenderer{horizontal: false}
+	}
+}
+
+// ConfigFields returns the config fields relevant to a given chart type.
+func ConfigFields(chartType string) []string {
+	switch chartType {
+	case TypeBar, TypeHBar:
+		return []string{"ymin", "ymax"}
+	case TypeLine, TypeScatter, TypeDot:
+		return []string{"ymin", "ymax"}
+	case TypeSparkline, TypeStreamline:
+		return []string{"ymin", "ymax"}
+	case TypePie:
+		return []string{"pie-style"}
+	case TypeHeatmap:
+		return []string{} // no config yet
+	case TypeTable:
+		return []string{} // no config yet
+	default:
+		return []string{}
 	}
 }
