@@ -68,7 +68,7 @@ func (r *PieRenderer) View() string {
 			chars = 1
 		}
 		colorIdx := i % len(colors)
-		style := lipgloss.NewStyle().Background(colors[colorIdx]).Foreground(lipgloss.Color("#000000"))
+		style := lipgloss.NewStyle().Background(colors[colorIdx]).Foreground(r.cfg.Theme.Background)
 		bar.WriteString(style.Render(strings.Repeat(" ", chars)))
 	}
 

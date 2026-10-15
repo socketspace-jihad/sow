@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"github.com/charmbracelet/bubbles/table"
-	"github.com/charmbracelet/lipgloss"
 	"github.com/socketspace-jihad/sow/internal/data"
 )
 
@@ -72,7 +71,7 @@ func (r *TableRenderer) Setup(ds *data.DataSet, cfg *Config, width, height int) 
 			Foreground(cfg.Theme.Colors[0]).
 			Bold(true)
 		s.Selected = s.Selected.
-			Foreground(lipgloss.Color("#000000")).
+			Foreground(cfg.Theme.Background).
 			Background(cfg.Theme.Colors[0])
 	}
 	t.SetStyles(s)
