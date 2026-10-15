@@ -592,13 +592,10 @@ func (m Model) manageModalView() string {
 // --- Y Column selector modal ---
 
 // availableYColumns returns column names for the Y dropdown.
-// Static mode: dataset headers. Live mode: detected column headers.
+// Only works in static mode — live mode columns are set at startup via --y.
 func (m Model) availableYColumns() []string {
 	if m.ds != nil && len(m.ds.Headers) > 0 {
 		return m.ds.Headers
-	}
-	if len(m.cfg.LiveColumns) > 0 {
-		return m.cfg.LiveColumns
 	}
 	return nil
 }
@@ -645,14 +642,11 @@ func (m *Model) applyYColumn(name string, idx int) {
 			m.cfg.YLabel = name
 		}
 		m.cfg.Overlays = nil
-	} else if len(m.cfg.LiveColumns) > 0 {
-		// Live mode with detected columns: filter to show only this column's data.
-		// Points whose Label matches a column name get filtered;
-		// points whose Label is a row-stream label (e.g., "all", "0") pass through.
+	} else {
+		// Live mode: just update the label display.
+		// Can't switch columns mid-stream — buffer only has the original --y values.
+		// The y dropdown in live mode filters row-stream labels, not columns.
 		m.cfg.YLabel = name
-		// We can't change the LiveParser's yCol mid-stream,
-		// but we can filter the buffered data by column label.
-		m.cfg.LiveYFilter = name
 	}
 }
 
