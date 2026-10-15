@@ -1,0 +1,99 @@
+name: Release (Main)
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+          - goos: linux
+            goarch: arm64
+          - goos: darwin
+            goarch: amd64
+          - goos: darwin
+            goarch: arm64
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: "0"
+        run: |
+          BINARY="sow_dev_${{ matrix.goos }}_${{ matrix.goarch }}"
+          go build -ldflags="-s -w -X main.version=dev-${GITHUB_SHA::7} -X main.commit=${GITHUB_SHA::7} -X main.date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" -o "${BINARY}" .
+          tar czf "${BINARY}.tar.gz" "${BINARY}"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sow_dev_${{ matrix.goos }}_${{ matrix.goarch }}
+          path: sow_dev_${{ matrix.goos }}_${{ matrix.goarch }}.tar.gz
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Generate checksums
+        run: |
+          cd dist
+          sha256sum *.tar.gz > checksums.txt
+
+      - name: Delete existing dev release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release delete dev --repo ${{ github.repository }} -y 2>/dev/null || true
+
+      - name: Delete dev tag
+        run: git push --delete origin dev 2>/dev/null || true
+
+      - name: Create dev release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create dev \
+            --repo ${{ github.repository }} \
+            --title "Development Build (${GITHUB_SHA::7})" \
+            --notes "$(cat <<EOF
+          **Automated dev build from \`main\` branch.**
+
+          Commit: ${GITHUB_SHA::7}
+          Date: $(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+          > ⚠️ This is a rolling pre-release — it gets replaced on every push to main.
+
+          ### Download
+          | OS | Arch | File |
+          |----|------|------|
+          | Linux | amd64 | \`sow_dev_linux_amd64.tar.gz\` |
+          | Linux | arm64 | \`sow_dev_linux_arm64.tar.gz\` |
+          | macOS | amd64 | \`sow_dev_darwin_amd64.tar.gz\` |
+          | macOS | arm64 | \`sow_dev_darwin_arm64.tar.gz\` |
+          EOF
+          )" \
+            --prerelease \
+            dist/*
