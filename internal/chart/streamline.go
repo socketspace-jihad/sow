@@ -14,8 +14,6 @@ type StreamlineRenderer struct {
 	width      int
 	height     int
 	knownRows  map[string]bool
-	colorIndex int
-	// For stack mode: accumulate values per time tick
 	stackAccum float64
 	stackCount int
 }
@@ -25,7 +23,6 @@ func (r *StreamlineRenderer) Setup(ds *data.DataSet, cfg *Config, width, height 
 	r.width = width
 	r.height = height
 	r.knownRows = make(map[string]bool)
-	r.colorIndex = 1
 
 	r.chart = streamlinechart.New(width, height)
 	if len(cfg.Theme.Colors) > 0 {
@@ -41,7 +38,6 @@ func (r *StreamlineRenderer) Setup(ds *data.DataSet, cfg *Config, width, height 
 		for _, v := range values {
 			r.chart.Push(v)
 		}
-
 		for _, ov := range cfg.Overlays {
 			colorIdx := ov.Color % len(cfg.Theme.Colors)
 			r.chart.SetDataSetStyles(ov.Name, runes.ThinLineStyle,
@@ -58,7 +54,6 @@ func (r *StreamlineRenderer) Setup(ds *data.DataSet, cfg *Config, width, height 
 func (r *StreamlineRenderer) Push(dp data.DataPoint) {
 	label := dp.Label
 
-	// Skip hidden rows
 	if label != "" && r.cfg.HiddenRows[label] {
 		return
 	}
@@ -68,14 +63,12 @@ func (r *StreamlineRenderer) Push(dp data.DataPoint) {
 		return
 	}
 
-	// Overlay mode (default)
 	if label == "" || label == r.cfg.YLabel {
 		r.chart.Push(dp.Value)
 	} else {
 		if !r.knownRows[label] {
 			r.knownRows[label] = true
-			colorIdx := r.colorIndex % len(r.cfg.Theme.Colors)
-			r.colorIndex++
+			colorIdx := r.stableColor(label)
 			r.chart.SetDataSetStyles(label, runes.ThinLineStyle,
 				lipgloss.NewStyle().Foreground(r.cfg.Theme.Colors[colorIdx]))
 		}
@@ -84,11 +77,18 @@ func (r *StreamlineRenderer) Push(dp data.DataPoint) {
 	r.chart.DrawAll()
 }
 
-// pushStack accumulates values from the same time tick and pushes a single stacked value.
-// When Row resets to 0, the previous accumulated value is flushed.
+// stableColor returns a consistent color index for a label.
+func (r *StreamlineRenderer) stableColor(label string) int {
+	if r.cfg.LabelColors != nil {
+		if idx, ok := r.cfg.LabelColors[label]; ok {
+			return idx % len(r.cfg.Theme.Colors)
+		}
+	}
+	return 0
+}
+
 func (r *StreamlineRenderer) pushStack(dp data.DataPoint) {
 	if dp.Row == 0 && r.stackCount > 0 {
-		// New cycle — flush the accumulated value
 		r.chart.Push(r.stackAccum)
 		r.chart.DrawAll()
 		r.stackAccum = 0

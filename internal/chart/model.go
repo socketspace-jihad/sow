@@ -1004,6 +1004,14 @@ func (m *Model) rebuildFromBuffer() {
 		return
 	}
 
+	// Sync stable color map from model's label tracking
+	if m.liveLabelsAt != nil {
+		m.cfg.LabelColors = make(map[string]int, len(m.liveLabelsAt))
+		for label, idx := range m.liveLabelsAt {
+			m.cfg.LabelColors[label] = idx
+		}
+	}
+
 	m.renderer = NewRenderer(m.cfg.ChartType)
 
 	if m.cfg.Live && len(m.liveBuffer) > 0 {

@@ -15,9 +15,7 @@ type BarRenderer struct {
 	cfg        *Config
 	width      int
 	height     int
-	// Multi-row: track label→color for consistent coloring
 	labelColors map[string]int
-	colorIndex  int
 }
 
 func (r *BarRenderer) Setup(ds *data.DataSet, cfg *Config, width, height int) {
@@ -25,7 +23,6 @@ func (r *BarRenderer) Setup(ds *data.DataSet, cfg *Config, width, height int) {
 	r.width = width
 	r.height = height
 	r.labelColors = make(map[string]int)
-	r.colorIndex = 0
 
 	r.chart = barchart.New(width, height)
 	r.chart.SetHorizontal(r.horizontal)
@@ -109,9 +106,14 @@ func (r *BarRenderer) colorForLabel(label string) lipgloss.Color {
 	if idx, ok := r.labelColors[label]; ok {
 		return r.cfg.Theme.Colors[idx%len(r.cfg.Theme.Colors)]
 	}
-	idx := r.colorIndex
+	// Use stable color from config, or assign based on label count
+	idx := len(r.labelColors)
+	if r.cfg.LabelColors != nil {
+		if ci, ok := r.cfg.LabelColors[label]; ok {
+			idx = ci
+		}
+	}
 	r.labelColors[label] = idx
-	r.colorIndex++
 	return r.cfg.Theme.Colors[idx%len(r.cfg.Theme.Colors)]
 }
 

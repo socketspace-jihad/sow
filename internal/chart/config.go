@@ -33,8 +33,9 @@ type Config struct {
 	LiveColumns []string
 
 	// Row-stream display options
-	RowMode    string            // "overlay" (default) or "stack"
-	HiddenRows map[string]bool   // rows to hide (toggled interactively)
+	RowMode      string            // "overlay" (default) or "stack"
+	HiddenRows   map[string]bool   // rows to hide (toggled interactively)
+	LabelColors  map[string]int    // stable label→color index (survives rebuild)
 
 	// Overlay configuration
 	Overlays []OverlayConfig

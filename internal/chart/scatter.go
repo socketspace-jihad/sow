@@ -15,9 +15,17 @@ type ScatterRenderer struct {
 	width      int
 	height     int
 	count      float64
-	rowCounts  map[string]float64
-	knownRows  map[string]bool
-	colorIndex int
+	rowCounts map[string]float64
+	knownRows map[string]bool
+}
+
+func (r *ScatterRenderer) stableColor(label string) int {
+	if r.cfg.LabelColors != nil {
+		if idx, ok := r.cfg.LabelColors[label]; ok {
+			return idx % len(r.cfg.Theme.Colors)
+		}
+	}
+	return 0
 }
 
 func (r *ScatterRenderer) Setup(ds *data.DataSet, cfg *Config, width, height int) {
@@ -26,7 +34,6 @@ func (r *ScatterRenderer) Setup(ds *data.DataSet, cfg *Config, width, height int
 	r.height = height
 	r.knownRows = make(map[string]bool)
 	r.rowCounts = make(map[string]float64)
-	r.colorIndex = 1
 
 	r.chart = wavelinechart.New(width, height)
 	if len(cfg.Theme.Colors) > 0 {
@@ -101,8 +108,7 @@ func (r *ScatterRenderer) Push(dp data.DataPoint) {
 	} else {
 		if !r.knownRows[label] {
 			r.knownRows[label] = true
-			colorIdx := r.colorIndex % len(r.cfg.Theme.Colors)
-			r.colorIndex++
+			colorIdx := r.stableColor(label)
 			r.chart.SetDataSetStyles(label, runes.ThinLineStyle,
 				lipgloss.NewStyle().Foreground(r.cfg.Theme.Colors[colorIdx]))
 		}
