@@ -69,6 +69,11 @@ func buildMonitorHelp(p *data.ToolProfile) string {
 	case "pidstat":
 		fmt.Fprintf(&b, "  sow pidstat\n")
 		fmt.Fprintf(&b, "  sow pidstat -m %%CPU\n")
+	case "mpstat":
+		fmt.Fprintf(&b, "  sow mpstat                     # per-core CPU heatmap (default)\n")
+		fmt.Fprintf(&b, "  sow mpstat -m %%sys             # system CPU per core\n")
+		fmt.Fprintf(&b, "  sow mpstat -m %%iowait -c ocean # I/O wait heatmap\n")
+		fmt.Fprintf(&b, "  sow mpstat --chart streamline  # line chart instead of heatmap\n")
 	}
 	return b.String()
 }
@@ -140,12 +145,23 @@ func runMonitor(profile *data.ToolProfile, toolArgs []string) error {
 		unit = "ms"
 	}
 
+	// Use profile's default chart if user didn't override
+	chartType := flagChartType
+	if !rootCmd.PersistentFlags().Changed("chart") && profile.DefaultChart != "" {
+		chartType = profile.DefaultChart
+	}
+
+	xLabel := "time"
+	if profile.MultiRow {
+		xLabel = "time (per core)"
+	}
+
 	cfg := &chart.Config{
-		ChartType: flagChartType,
+		ChartType: chartType,
 		Title:     title,
 		Live:      true,
 		Theme:     th,
-		XLabel:    "time",
+		XLabel:    xLabel,
 		YLabel:    yLabel,
 		Unit:      unit,
 	}
@@ -177,6 +193,24 @@ func runMonitor(profile *data.ToolProfile, toolArgs []string) error {
 				}
 			}
 
+			now := time.Now()
+
+			if profile.MultiRow && profile.DataParseMulti != nil {
+				values, rowID, ok := profile.DataParseMulti(line, columns)
+				if !ok {
+					continue
+				}
+				if v, exists := values[metric]; exists {
+					ch <- data.DataPoint{
+						Label: fmt.Sprintf("cpu%d", int(rowID)),
+						Value: v,
+						Time:  now,
+						Row:   rowID,
+					}
+				}
+				continue
+			}
+
 			values := profile.DataParse(line, columns)
 			if values == nil {
 				continue
@@ -186,7 +220,7 @@ func runMonitor(profile *data.ToolProfile, toolArgs []string) error {
 				ch <- data.DataPoint{
 					Label: metric,
 					Value: v,
-					Time:  time.Now(),
+					Time:  now,
 				}
 			}
 		}

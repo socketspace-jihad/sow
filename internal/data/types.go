@@ -13,6 +13,7 @@ type DataPoint struct {
 	Label string
 	Value float64
 	Time  time.Time
+	Row   float64 // Y coordinate for multi-row data (e.g., CPU core index for heatmap)
 }
 
 // StreamInfo holds auto-detected metadata about a live data stream.

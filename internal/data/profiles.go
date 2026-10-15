@@ -12,12 +12,17 @@ type ToolProfile struct {
 	Command       string            // binary to execute
 	DefaultArgs   []string          // default arguments (e.g., interval "1")
 	DefaultMetric string            // default column to graph
+	DefaultChart  string            // default chart type (empty = "streamline")
 	Unit          string            // unit of the default metric
 	Metrics       map[string]string // metric name → description
 	Title         string            // auto-generated title
+	MultiRow      bool              // true = each data line has a row ID (e.g., CPU core)
 	HeaderDetect  func(line string) bool
 	ColumnParse   func(headerLines []string) []string
 	DataParse     func(line string, columns []string) map[string]float64
+	// DataParseMulti returns metric values + row ID (e.g., CPU number).
+	// Only used when MultiRow is true. Returns (values, rowID, ok).
+	DataParseMulti func(line string, columns []string) (map[string]float64, float64, bool)
 }
 
 // Profiles returns all known tool profiles.
@@ -27,6 +32,7 @@ var Profiles = map[string]*ToolProfile{
 	"iostat":  iostatProfile(),
 	"sar":     sarProfile(),
 	"pidstat": pidstatProfile(),
+	"mpstat":  mpstatProfile(),
 }
 
 // ListMetrics returns available metrics for a tool as "name - description" strings.
@@ -358,6 +364,112 @@ func pidstatProfile() *ToolProfile {
 				return nil
 			}
 			return result
+		},
+	}
+}
+
+// --- mpstat ---
+
+func mpstatProfile() *ToolProfile {
+	return &ToolProfile{
+		Name:          "mpstat",
+		Command:       "mpstat",
+		DefaultArgs:   []string{"-P", "ALL", "1"},
+		DefaultMetric: "%usr",
+		DefaultChart:  "heatmap",
+		Unit:          "%",
+		Title:         "CPU Utilization per Core (mpstat)",
+		MultiRow:      true,
+		Metrics: map[string]string{
+			"%usr":    "user CPU %",
+			"%nice":   "nice %",
+			"%sys":    "system CPU %",
+			"%iowait": "I/O wait %",
+			"%irq":    "hardware interrupt %",
+			"%soft":   "software interrupt %",
+			"%steal":  "steal %",
+			"%guest":  "guest %",
+			"%gnice":  "guest nice %",
+			"%idle":   "idle %",
+		},
+		HeaderDetect: func(line string) bool {
+			trimmed := strings.TrimSpace(line)
+			return strings.Contains(trimmed, "%usr") ||
+				strings.HasPrefix(trimmed, "Linux ") ||
+				trimmed == ""
+		},
+		ColumnParse: func(headerLines []string) []string {
+			for _, line := range headerLines {
+				if strings.Contains(line, "%usr") {
+					fields := strings.Fields(line)
+					var cols []string
+					found := false
+					for _, f := range fields {
+						if f == "CPU" {
+							found = true
+							cols = append(cols, f)
+							continue
+						}
+						if found {
+							cols = append(cols, f)
+						}
+					}
+					if len(cols) > 0 {
+						return cols
+					}
+				}
+			}
+			return []string{"CPU", "%usr", "%nice", "%sys", "%iowait", "%irq", "%soft", "%steal", "%guest", "%gnice", "%idle"}
+		},
+		DataParseMulti: func(line string, columns []string) (map[string]float64, float64, bool) {
+			fields := strings.Fields(strings.TrimSpace(line))
+			if len(fields) < 3 {
+				return nil, 0, false
+			}
+
+			// Skip "all" aggregate line
+			for _, f := range fields {
+				if f == "all" || f == "ALL" {
+					return nil, 0, false
+				}
+			}
+
+			// Find the CPU number field
+			cpuIdx := -1
+			for i, f := range fields {
+				if cpuNum, err := strconv.Atoi(f); err == nil && cpuNum >= 0 && cpuNum < 1024 && i > 0 {
+					cpuIdx = i
+					break
+				}
+			}
+			if cpuIdx < 0 {
+				return nil, 0, false
+			}
+
+			cpuNum, _ := strconv.ParseFloat(fields[cpuIdx], 64)
+
+			result := make(map[string]float64)
+			metricCols := make([]string, 0)
+			for _, c := range columns {
+				if strings.HasPrefix(c, "%") {
+					metricCols = append(metricCols, c)
+				}
+			}
+
+			valueStart := cpuIdx + 1
+			for i, col := range metricCols {
+				idx := valueStart + i
+				if idx < len(fields) {
+					if v, err := strconv.ParseFloat(fields[idx], 64); err == nil {
+						result[col] = v
+					}
+				}
+			}
+
+			if len(result) == 0 {
+				return nil, 0, false
+			}
+			return result, cpuNum, true
 		},
 	}
 }

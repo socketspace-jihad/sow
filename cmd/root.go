@@ -32,6 +32,7 @@ var (
 	flagPieStyle  string
 	flagOverlay   []string
 	flagFixScale  bool // set by PersistentPreRun
+	flagPattern   string
 )
 
 var rootCmd = &cobra.Command{
@@ -67,6 +68,7 @@ func init() {
 	rootCmd.PersistentFlags().Float64Var(&flagYMax, "ymax", 0, "Fixed Y-axis maximum")
 	rootCmd.PersistentFlags().StringVar(&flagPieStyle, "pie-style", "bar", "Pie chart style: bar or circle")
 	rootCmd.PersistentFlags().StringSliceVar(&flagOverlay, "overlay", nil, "Overlay columns (name or index, repeatable)")
+	rootCmd.PersistentFlags().StringVarP(&flagPattern, "pattern", "p", "", "Pattern for parsing log lines: {label}={value}")
 }
 
 // SetVersion sets version info from ldflags.
@@ -178,6 +180,16 @@ func runLive(cfg *chart.Config) error {
 	ch := make(chan data.DataPoint, 100)
 	infoCh := make(chan data.StreamInfo, 1)
 
+	// Compile pattern parser if --pattern is set
+	var patternParser *data.PatternParser
+	if flagPattern != "" {
+		var err error
+		patternParser, err = data.NewPatternParser(flagPattern)
+		if err != nil {
+			return fmt.Errorf("invalid pattern %q: %w", flagPattern, err)
+		}
+	}
+
 	go func() {
 		defer close(ch)
 		detected := false
@@ -186,18 +198,23 @@ func runLive(cfg *chart.Config) error {
 			line := scanner.Text()
 
 			// Try to detect stream source from header lines (first few lines)
-			if !detected {
+			if !detected && patternParser == nil {
 				if info := data.DetectStream(line); info != nil {
 					infoCh <- *info
 					detected = true
-					continue // header line, not data
+					continue
 				}
 			}
 
-			dp := data.ParseLine(line)
+			var dp *data.DataPoint
+			if patternParser != nil {
+				dp = patternParser.ParseLine(line)
+			} else {
+				dp = data.ParseLine(line)
+			}
+
 			if dp != nil {
 				dp.Time = time.Now()
-				// If we detected the source, tag the label
 				ch <- *dp
 			}
 		}

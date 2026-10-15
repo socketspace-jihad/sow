@@ -13,23 +13,25 @@ import (
 )
 
 type HeatmapRenderer struct {
-	chart    heatmap.Model
-	cfg      *Config
-	width    int
-	height   int
-	minVal   float64
-	maxVal   float64
-	hasData  bool
+	chart   heatmap.Model
+	cfg     *Config
+	width   int
+	height  int
+	minVal  float64
+	maxVal  float64
+	hasData bool
+	timeCol float64 // auto-incrementing X for live data
 }
 
 func (r *HeatmapRenderer) Setup(ds *data.DataSet, cfg *Config, width, height int) {
 	r.cfg = cfg
 	r.width = width
-	r.height = height - 3 // reserve space for legend
+	r.height = height - 3
 
 	r.chart = heatmap.New(r.width, r.height)
 	r.minVal = math.MaxFloat64
 	r.maxVal = -math.MaxFloat64
+	r.timeCol = 0
 
 	if ds != nil && len(ds.Rows) > 0 {
 		for _, row := range ds.Rows {
@@ -61,8 +63,15 @@ func (r *HeatmapRenderer) trackRange(v float64) {
 }
 
 func (r *HeatmapRenderer) Push(dp data.DataPoint) {
-	r.chart.Push(heatmap.NewHeatPoint(float64(dp.Time.UnixMilli()%1000), 0, dp.Value))
+	// Use dp.Row as Y (e.g., CPU core number), timeCol as X
+	r.chart.Push(heatmap.NewHeatPoint(r.timeCol, dp.Row, dp.Value))
 	r.trackRange(dp.Value)
+
+	// Advance time column only when we see row 0 again (new sample cycle)
+	if dp.Row == 0 && r.hasData {
+		r.timeCol++
+	}
+
 	r.chart.Draw()
 }
 
@@ -93,7 +102,6 @@ func (r *HeatmapRenderer) colorScaleLegend() string {
 		scale = heatmap.GetDefaultColorScale()
 	}
 
-	// Render color gradient bar
 	barWidth := r.width - 20
 	if barWidth < 10 {
 		barWidth = 10
@@ -118,6 +126,10 @@ func (r *HeatmapRenderer) colorScaleLegend() string {
 	}
 
 	bar.WriteString(dim.Render(" " + maxLabel))
+
+	if r.cfg.Unit != "" {
+		bar.WriteString(dim.Render(" " + r.cfg.Unit))
+	}
 
 	return bar.String()
 }

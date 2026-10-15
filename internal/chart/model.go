@@ -56,10 +56,12 @@ const (
 )
 
 type modal struct {
-	mode      modalMode
-	input     string
-	selectIdx int
-	field     int // for config modal: which field is selected
+	mode         modalMode
+	input        string
+	selectIdx    int
+	field        int    // for config modal: which field is selected
+	dropdownIdx  int    // index into ConfigFieldOptions for enum fields
+	dropdownOpen bool   // whether the dropdown is expanded
 }
 
 // Model is the top-level Bubble Tea model.
@@ -77,7 +79,9 @@ type Model struct {
 	modal    modal
 
 	// Persistent data buffer — survives theme/chart type changes.
-	liveBuffer []data.DataPoint
+	liveBuffer   []data.DataPoint
+	liveLabels   []string          // unique labels seen in order
+	liveLabelsAt map[string]int    // label → color index
 }
 
 func NewModel(cfg *Config, ds *data.DataSet, liveCh <-chan data.DataPoint) Model {
@@ -136,7 +140,7 @@ func (m Model) View() string {
 	b.WriteString(m.renderer.View())
 	b.WriteString("\n")
 
-	if len(m.cfg.Overlays) > 0 {
+	if len(m.cfg.Overlays) > 0 || len(m.liveLabels) > 1 {
 		b.WriteString(m.overlayLegendView())
 		b.WriteString("\n")
 	}
@@ -196,12 +200,24 @@ func (m Model) legendView() string {
 
 func (m Model) overlayLegendView() string {
 	dim := m.cfg.Theme.Axis
-	parts := []string{"  " + dim.Render("overlays:")}
+	parts := []string{"  " + dim.Render("series:")}
+
+	// Static overlays
 	for _, ov := range m.cfg.Overlays {
 		colorIdx := ov.Color % len(m.cfg.Theme.Colors)
 		dot := lipgloss.NewStyle().Foreground(m.cfg.Theme.Colors[colorIdx]).Render("●")
 		parts = append(parts, dot+" "+dim.Render(ov.Name))
 	}
+
+	// Live multi-row labels (e.g., cpu0, cpu1, cpu2...)
+	if len(m.cfg.Overlays) == 0 && len(m.liveLabels) > 1 {
+		for _, label := range m.liveLabels {
+			colorIdx := m.liveLabelsAt[label] % len(m.cfg.Theme.Colors)
+			dot := lipgloss.NewStyle().Foreground(m.cfg.Theme.Colors[colorIdx]).Render("●")
+			parts = append(parts, dot+" "+dim.Render(label))
+		}
+	}
+
 	return strings.Join(parts, "  ")
 }
 
@@ -260,12 +276,8 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case "c":
-		fields := ConfigFields(m.cfg.ChartType)
-		initInput := ""
-		if len(fields) > 0 {
-			initInput = m.configFieldValue(fields[0])
-		}
-		m.modal = modal{mode: modalConfig, input: initInput}
+		m.modal = modal{mode: modalConfig}
+		m.configSyncField()
 		return m, nil
 	}
 	return m, nil
@@ -447,6 +459,31 @@ func (m Model) chartConfigFields() []string {
 	return ConfigFields(m.cfg.ChartType)
 }
 
+func (m *Model) configSyncField() {
+	fields := m.chartConfigFields()
+	if m.modal.field >= len(fields) {
+		return
+	}
+	name := fields[m.modal.field]
+	opts := ConfigFieldOptions(name)
+	if opts != nil {
+		// Dropdown: find current value index
+		cur := m.configFieldValue(name)
+		m.modal.dropdownOpen = true
+		m.modal.dropdownIdx = 0
+		for i, o := range opts {
+			if o == cur {
+				m.modal.dropdownIdx = i
+				break
+			}
+		}
+		m.modal.input = ""
+	} else {
+		m.modal.dropdownOpen = false
+		m.modal.input = m.configFieldValue(name)
+	}
+}
+
 func (m Model) handleConfigModalKey(key string) (tea.Model, tea.Cmd) {
 	fields := m.chartConfigFields()
 	if len(fields) == 0 {
@@ -454,41 +491,72 @@ func (m Model) handleConfigModalKey(key string) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	name := fields[m.modal.field]
+	opts := ConfigFieldOptions(name)
+	isDropdown := opts != nil
+
 	switch key {
 	case "esc", "ctrl+c":
 		m.modal.mode = modalNone
 		return m, nil
+
 	case "up", "k":
-		if m.modal.field > 0 {
-			m.modal.field--
-			m.modal.input = m.configFieldValue(fields[m.modal.field])
+		if isDropdown {
+			if m.modal.dropdownIdx > 0 {
+				m.modal.dropdownIdx--
+			}
+		} else {
+			if m.modal.field > 0 {
+				m.modal.field--
+				m.configSyncField()
+			}
 		}
 		return m, nil
+
 	case "down", "j":
-		if m.modal.field < len(fields)-1 {
-			m.modal.field++
-			m.modal.input = m.configFieldValue(fields[m.modal.field])
+		if isDropdown {
+			if m.modal.dropdownIdx < len(opts)-1 {
+				m.modal.dropdownIdx++
+			}
+		} else {
+			if m.modal.field < len(fields)-1 {
+				m.modal.field++
+				m.configSyncField()
+			}
 		}
 		return m, nil
+
 	case "enter":
-		m.applyConfigField(fields[m.modal.field], m.modal.input)
+		if isDropdown {
+			m.applyConfigField(name, opts[m.modal.dropdownIdx])
+		} else {
+			m.applyConfigField(name, m.modal.input)
+		}
 		m.rebuildFromBuffer()
 		return m, nil
+
+	case "tab":
+		// Apply current and move to next field
+		if isDropdown {
+			m.applyConfigField(name, opts[m.modal.dropdownIdx])
+		} else {
+			m.applyConfigField(name, m.modal.input)
+		}
+		if m.modal.field < len(fields)-1 {
+			m.modal.field++
+			m.configSyncField()
+		}
+		m.rebuildFromBuffer()
+		return m, nil
+
 	case "backspace":
-		if len(m.modal.input) > 0 {
+		if !isDropdown && len(m.modal.input) > 0 {
 			m.modal.input = m.modal.input[:len(m.modal.input)-1]
 		}
 		return m, nil
-	case "tab":
-		m.applyConfigField(fields[m.modal.field], m.modal.input)
-		if m.modal.field < len(fields)-1 {
-			m.modal.field++
-			m.modal.input = m.configFieldValue(fields[m.modal.field])
-		}
-		m.rebuildFromBuffer()
-		return m, nil
+
 	default:
-		if len(key) == 1 {
+		if !isDropdown && len(key) == 1 {
 			m.modal.input += key
 		}
 		return m, nil
@@ -560,23 +628,52 @@ func (m Model) configModalView() string {
 	} else {
 		for i, name := range fields {
 			marker := "  "
-			if i == m.modal.field {
+			isActive := i == m.modal.field
+			if isActive {
 				marker = fg.Render("> ")
 			}
-			val := m.configFieldValue(name)
-			if i == m.modal.field {
-				val = m.modal.input + "_"
+
+			opts := ConfigFieldOptions(name)
+			if opts != nil && isActive {
+				// Dropdown field — render as selectable list
+				lines = append(lines, fmt.Sprintf("  %s%s",
+					marker, dim.Render(fmt.Sprintf("%-12s", name+":"))))
+				for j, opt := range opts {
+					sel := "    "
+					if j == m.modal.dropdownIdx {
+						sel = "  " + accent.Render("▸ ")
+					} else {
+						sel = "    "
+					}
+					style := dim
+					if j == m.modal.dropdownIdx {
+						style = fg
+					}
+					lines = append(lines, sel+style.Render(opt))
+				}
+			} else {
+				// Text input or inactive dropdown
+				val := m.configFieldValue(name)
+				if isActive && opts == nil {
+					val = m.modal.input + "_"
+				} else if opts != nil {
+					// Show current value for inactive dropdown
+					val = m.configFieldValue(name)
+				}
+				lines = append(lines, fmt.Sprintf("  %s%s  %s",
+					marker, dim.Render(fmt.Sprintf("%-12s", name+":")), accent.Render(val)))
 			}
-			lines = append(lines, fmt.Sprintf("  %s%s  %s",
-				marker, dim.Render(fmt.Sprintf("%-12s", name+":")), accent.Render(val)))
 		}
 		lines = append(lines, "")
-		// Show hint based on what fields are present
+		hasScale := false
 		for _, f := range fields {
 			if f == "ymin" || f == "ymax" {
-				lines = append(lines, "  "+dim.Render("Type 'auto' for ymin/ymax to use auto-scaling"))
+				hasScale = true
 				break
 			}
+		}
+		if hasScale {
+			lines = append(lines, "  "+dim.Render("Type 'auto' for ymin/ymax to use auto-scaling"))
 		}
 	}
 
@@ -624,6 +721,17 @@ func (m Model) handleData(msg dataMsg) (tea.Model, tea.Cmd) {
 
 	// Store in persistent buffer
 	m.liveBuffer = append(m.liveBuffer, dp)
+
+	// Track unique labels for multi-row overlay legend
+	if dp.Label != "" {
+		if m.liveLabelsAt == nil {
+			m.liveLabelsAt = make(map[string]int)
+		}
+		if _, exists := m.liveLabelsAt[dp.Label]; !exists {
+			m.liveLabelsAt[dp.Label] = len(m.liveLabels) + 1
+			m.liveLabels = append(m.liveLabels, dp.Label)
+		}
+	}
 
 	if m.renderer != nil {
 		m.renderer.Push(dp)

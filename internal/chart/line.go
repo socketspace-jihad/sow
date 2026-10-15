@@ -10,17 +10,23 @@ import (
 )
 
 type LineRenderer struct {
-	chart  wavelinechart.Model
-	cfg    *Config
-	width  int
-	height int
-	count  float64
+	chart      wavelinechart.Model
+	cfg        *Config
+	width      int
+	height     int
+	count      float64
+	rowCounts  map[string]float64 // per-row X counters
+	knownRows  map[string]bool
+	colorIndex int
 }
 
 func (r *LineRenderer) Setup(ds *data.DataSet, cfg *Config, width, height int) {
 	r.cfg = cfg
 	r.width = width
 	r.height = height
+	r.knownRows = make(map[string]bool)
+	r.rowCounts = make(map[string]float64)
+	r.colorIndex = 1
 
 	r.chart = wavelinechart.New(width, height)
 	if len(cfg.Theme.Colors) > 0 {
@@ -58,7 +64,6 @@ func (r *LineRenderer) Setup(ds *data.DataSet, cfg *Config, width, height int) {
 		}
 	}
 
-	// Apply fixed scale if set
 	if cfg.FixScale {
 		if cfg.YMin != 0 || cfg.YMax != 0 {
 			minY = cfg.YMin
@@ -79,12 +84,10 @@ func (r *LineRenderer) Setup(ds *data.DataSet, cfg *Config, width, height int) {
 		r.chart.SetStyles(runes.ThinLineStyle, lipgloss.NewStyle().Foreground(cfg.Theme.Colors[0]))
 	}
 
-	// Plot primary series
 	for i, v := range values {
 		r.chart.Plot(canvas.Float64Point{X: float64(i), Y: v})
 	}
 
-	// Plot overlays as separate named datasets
 	for _, ov := range cfg.Overlays {
 		ovVals := ds.NumericColumn(ov.ColIdx)
 		colorIdx := ov.Color % len(cfg.Theme.Colors)
@@ -100,8 +103,23 @@ func (r *LineRenderer) Setup(ds *data.DataSet, cfg *Config, width, height int) {
 }
 
 func (r *LineRenderer) Push(dp data.DataPoint) {
-	r.chart.Plot(canvas.Float64Point{X: r.count, Y: dp.Value})
-	r.count++
+	label := dp.Label
+	if label == "" || label == r.cfg.YLabel {
+		r.chart.Plot(canvas.Float64Point{X: r.count, Y: dp.Value})
+		r.count++
+	} else {
+		// Multi-row: route to named dataset
+		if !r.knownRows[label] {
+			r.knownRows[label] = true
+			colorIdx := r.colorIndex % len(r.cfg.Theme.Colors)
+			r.colorIndex++
+			r.chart.SetDataSetStyles(label, runes.ThinLineStyle,
+				lipgloss.NewStyle().Foreground(r.cfg.Theme.Colors[colorIdx]))
+		}
+		x := r.rowCounts[label]
+		r.chart.PlotDataSet(label, canvas.Float64Point{X: x, Y: dp.Value})
+		r.rowCounts[label] = x + 1
+	}
 	r.chart.DrawAll()
 }
 

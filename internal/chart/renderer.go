@@ -54,10 +54,20 @@ func ConfigFields(chartType string) []string {
 	case TypePie:
 		return []string{"pie-style"}
 	case TypeHeatmap:
-		return []string{} // no config yet
+		return []string{}
 	case TypeTable:
-		return []string{} // no config yet
+		return []string{}
 	default:
 		return []string{}
 	}
+}
+
+// ConfigFieldOptions returns the allowed values for a dropdown field.
+// Returns nil for free-text fields.
+func ConfigFieldOptions(name string) []string {
+	switch name {
+	case "pie-style":
+		return []string{"bar", "circle"}
+	}
+	return nil
 }
