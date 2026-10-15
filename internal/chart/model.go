@@ -53,6 +53,7 @@ const (
 	modalOverlay           // add overlay
 	modalManage            // manage/remove overlays
 	modalConfig            // edit chart configuration
+	modalYColumn           // select Y column
 )
 
 type modal struct {
@@ -157,11 +158,13 @@ func (m Model) View() string {
 		b.WriteString(m.manageModalView())
 	case modalConfig:
 		b.WriteString(m.configModalView())
+	case modalYColumn:
+		b.WriteString(m.yColumnModalView())
 	default:
 		if m.showHelp {
 			b.WriteString(m.helpView())
 		} else {
-			b.WriteString(m.cfg.Theme.Help.Render("  ? help  q quit  tab switch  t theme  o overlay  c config"))
+			b.WriteString(m.cfg.Theme.Help.Render("  ? help  q quit  tab switch  t theme  y column  o overlay  c config"))
 		}
 	}
 
@@ -279,6 +282,20 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.modal = modal{mode: modalConfig}
 		m.configSyncField()
 		return m, nil
+	case "y":
+		cols := m.availableYColumns()
+		if len(cols) > 0 {
+			// Pre-select current Y column
+			selIdx := 0
+			for i, c := range cols {
+				if c == m.cfg.YLabel || fmt.Sprintf("%d", m.cfg.YColIdx) == c {
+					selIdx = i
+					break
+				}
+			}
+			m.modal = modal{mode: modalYColumn, selectIdx: selIdx}
+		}
+		return m, nil
 	}
 	return m, nil
 }
@@ -293,6 +310,8 @@ func (m Model) handleModalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleManageModalKey(key)
 	case modalConfig:
 		return m.handleConfigModalKey(key)
+	case modalYColumn:
+		return m.handleYColumnModalKey(key)
 	}
 	return m, nil
 }
@@ -373,6 +392,32 @@ func (m Model) overlayModalView() string {
 		accent = lipgloss.NewStyle().Foreground(m.cfg.Theme.Colors[0])
 	}
 
+	// Live mode with auto-detected series — show info instead of column picker
+	if m.cfg.Live && m.ds == nil {
+		lines := []string{
+			"",
+			"  " + bright.Render("Overlay Series") + dim.Render("  (esc=close)"),
+			"",
+		}
+		if len(m.liveLabels) > 0 {
+			lines = append(lines, "  "+dim.Render("Active series (auto-detected):"))
+			for _, label := range m.liveLabels {
+				colorIdx := m.liveLabelsAt[label] % len(m.cfg.Theme.Colors)
+				dot := lipgloss.NewStyle().Foreground(m.cfg.Theme.Colors[colorIdx]).Render("●")
+				lines = append(lines, fmt.Sprintf("    %s %s", dot, fg.Render(label)))
+			}
+		} else {
+			lines = append(lines, "  "+dim.Render("No series detected yet. Overlays are automatic for:"))
+			lines = append(lines, "")
+			lines = append(lines, "  "+dim.Render("  Multi-row tools:  sow mpstat --chart line"))
+			lines = append(lines, "  "+dim.Render("  Pattern labels:   --pattern \"{label}={value}\""))
+			lines = append(lines, "  "+dim.Render("  Piped labels:     each unique label = separate series"))
+		}
+		lines = append(lines, "")
+		return strings.Join(lines, "\n")
+	}
+
+	// Static mode — column picker
 	lines := []string{
 		"",
 		"  " + bright.Render("Add Overlay") + dim.Render("  (enter=add  esc=cancel)"),
@@ -385,9 +430,22 @@ func (m Model) overlayModalView() string {
 			if i == m.cfg.YColIdx {
 				marker = dim.Render("* ")
 			}
+			// Mark already-overlaid columns
+			for _, ov := range m.cfg.Overlays {
+				if ov.ColIdx == i {
+					marker = dim.Render("+ ")
+					break
+				}
+			}
 			lines = append(lines, fmt.Sprintf("    %s%s %s",
 				marker, dim.Render(fmt.Sprintf("%d:", i)), accent.Render(h)))
 		}
+		lines = append(lines, "")
+		lines = append(lines, "  "+dim.Render("* = primary Y column  + = already overlaid"))
+		lines = append(lines, "")
+	} else if m.ds != nil {
+		numCols := m.ds.NumColumns()
+		lines = append(lines, "  "+dim.Render(fmt.Sprintf("Columns: 0 to %d (no headers)", numCols-1)))
 		lines = append(lines, "")
 	}
 	lines = append(lines, "  "+dim.Render("Column (name or index): ")+fg.Render(m.modal.input)+"_")
@@ -449,6 +507,124 @@ func (m Model) manageModalView() string {
 			marker, dot, fg.Render(ov.Name),
 			dim.Render(fmt.Sprintf("(col %d)", ov.ColIdx))))
 	}
+	lines = append(lines, "")
+	return strings.Join(lines, "\n")
+}
+
+// --- Y Column selector modal ---
+
+// availableYColumns returns column names for the Y dropdown.
+// Static mode: dataset headers. Live mode: detected labels.
+func (m Model) availableYColumns() []string {
+	if m.ds != nil && len(m.ds.Headers) > 0 {
+		return m.ds.Headers
+	}
+	if len(m.liveLabels) > 0 {
+		return m.liveLabels
+	}
+	return nil
+}
+
+func (m Model) handleYColumnModalKey(key string) (tea.Model, tea.Cmd) {
+	cols := m.availableYColumns()
+	if len(cols) == 0 {
+		m.modal.mode = modalNone
+		return m, nil
+	}
+
+	switch key {
+	case "esc", "ctrl+c":
+		m.modal.mode = modalNone
+		return m, nil
+	case "up", "k":
+		if m.modal.selectIdx > 0 {
+			m.modal.selectIdx--
+		}
+		return m, nil
+	case "down", "j":
+		if m.modal.selectIdx < len(cols)-1 {
+			m.modal.selectIdx++
+		}
+		return m, nil
+	case "enter":
+		selected := cols[m.modal.selectIdx]
+		m.applyYColumn(selected, m.modal.selectIdx)
+		m.modal.mode = modalNone
+		m.rebuildFromBuffer()
+		return m, nil
+	}
+	return m, nil
+}
+
+func (m *Model) applyYColumn(name string, idx int) {
+	if m.ds != nil {
+		// Static mode: change the Y column index
+		m.cfg.YColIdx = idx
+		m.cfg.YCol = name
+		if idx < len(m.ds.Headers) {
+			m.cfg.YLabel = m.ds.Headers[idx]
+		} else {
+			m.cfg.YLabel = name
+		}
+		// Clear overlays since the primary Y changed
+		m.cfg.Overlays = nil
+	} else {
+		// Live mode: filter to only this label
+		m.cfg.YLabel = name
+		// Rebuild buffer with only matching labels
+		var filtered []data.DataPoint
+		for _, dp := range m.liveBuffer {
+			if dp.Label == name {
+				filtered = append(filtered, dp)
+			}
+		}
+		// Keep the full buffer but mark the active filter
+		m.cfg.YCol = name
+	}
+}
+
+func (m Model) yColumnModalView() string {
+	cols := m.availableYColumns()
+	dim := m.cfg.Theme.Axis
+	bright := m.cfg.Theme.Title
+	fg := lipgloss.NewStyle().Foreground(m.cfg.Theme.Foreground)
+	accent := lipgloss.NewStyle()
+	if len(m.cfg.Theme.Colors) > 0 {
+		accent = lipgloss.NewStyle().Foreground(m.cfg.Theme.Colors[0])
+	}
+
+	lines := []string{
+		"",
+		"  " + bright.Render("Select Y Column") + dim.Render("  (enter=select  esc=cancel)"),
+		"",
+	}
+
+	if len(cols) == 0 {
+		lines = append(lines, "  "+dim.Render("No columns detected yet."))
+	} else {
+		for i, col := range cols {
+			marker := "    "
+			if i == m.modal.selectIdx {
+				marker = "  " + accent.Render("▸ ")
+			}
+
+			// Show which one is currently active
+			label := dim.Render(col)
+			if i == m.modal.selectIdx {
+				label = fg.Render(col)
+			}
+
+			current := ""
+			if m.ds != nil && i == m.cfg.YColIdx {
+				current = dim.Render("  (current)")
+			} else if m.ds == nil && col == m.cfg.YLabel {
+				current = dim.Render("  (current)")
+			}
+
+			lines = append(lines, fmt.Sprintf("%s%s%s", marker, label, current))
+		}
+	}
+
 	lines = append(lines, "")
 	return strings.Join(lines, "\n")
 }
@@ -734,7 +910,12 @@ func (m Model) handleData(msg dataMsg) (tea.Model, tea.Cmd) {
 	}
 
 	if m.renderer != nil {
-		m.renderer.Push(dp)
+		// In live mode with Y column filter, only push matching labels
+		if m.cfg.Live && m.cfg.YCol != "" && dp.Label != "" && dp.Label != m.cfg.YCol {
+			// Still buffer but don't render
+		} else {
+			m.renderer.Push(dp)
+		}
 	}
 
 	if m.liveCh != nil {
@@ -753,18 +934,21 @@ func (m *Model) rebuildFromBuffer() {
 	m.renderer = NewRenderer(m.cfg.ChartType)
 
 	if m.cfg.Live && len(m.liveBuffer) > 0 {
-		// For table chart type, build a DataSet from the buffer
 		if m.cfg.ChartType == TypeTable {
 			ds := m.dataSetFromBuffer()
 			m.renderer.Setup(ds, m.cfg, m.width, m.height)
 		} else {
 			m.renderer.Setup(nil, m.cfg, m.width, m.height)
+			yFilter := m.cfg.YCol
 			for _, dp := range m.liveBuffer {
+				// Apply Y column filter during replay
+				if yFilter != "" && dp.Label != "" && dp.Label != yFilter {
+					continue
+				}
 				m.renderer.Push(dp)
 			}
 		}
 	} else {
-		// Static mode — re-read from dataset
 		m.renderer.Setup(m.ds, m.cfg, m.width, m.height)
 	}
 }
@@ -799,6 +983,7 @@ func (m Model) helpView() string {
 		s.Render("  Shift+Tab   ") + fg.Render("Previous chart type"),
 		s.Render("  t           ") + fg.Render("Cycle color theme"),
 		s.Render("  r           ") + fg.Render("Redraw chart"),
+		s.Render("  y           ") + fg.Render("Select Y column"),
 		s.Render("  o           ") + fg.Render("Add overlay series"),
 		s.Render("  O           ") + fg.Render("Manage/remove overlays"),
 		s.Render("  c           ") + fg.Render("Open configuration"),

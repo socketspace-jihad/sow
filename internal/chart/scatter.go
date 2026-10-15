@@ -10,17 +10,23 @@ import (
 )
 
 type ScatterRenderer struct {
-	chart  wavelinechart.Model
-	cfg    *Config
-	width  int
-	height int
-	count  float64
+	chart      wavelinechart.Model
+	cfg        *Config
+	width      int
+	height     int
+	count      float64
+	rowCounts  map[string]float64
+	knownRows  map[string]bool
+	colorIndex int
 }
 
 func (r *ScatterRenderer) Setup(ds *data.DataSet, cfg *Config, width, height int) {
 	r.cfg = cfg
 	r.width = width
 	r.height = height
+	r.knownRows = make(map[string]bool)
+	r.rowCounts = make(map[string]float64)
+	r.colorIndex = 1
 
 	r.chart = wavelinechart.New(width, height)
 	if len(cfg.Theme.Colors) > 0 {
@@ -70,7 +76,6 @@ func (r *ScatterRenderer) Setup(ds *data.DataSet, cfg *Config, width, height int
 		r.chart.Plot(canvas.Float64Point{X: float64(i), Y: v})
 	}
 
-	// Plot overlays
 	for _, ov := range cfg.Overlays {
 		ovVals := ds.NumericColumn(ov.ColIdx)
 		colorIdx := ov.Color % len(cfg.Theme.Colors)
@@ -86,8 +91,22 @@ func (r *ScatterRenderer) Setup(ds *data.DataSet, cfg *Config, width, height int
 }
 
 func (r *ScatterRenderer) Push(dp data.DataPoint) {
-	r.chart.Plot(canvas.Float64Point{X: r.count, Y: dp.Value})
-	r.count++
+	label := dp.Label
+	if label == "" || label == r.cfg.YLabel {
+		r.chart.Plot(canvas.Float64Point{X: r.count, Y: dp.Value})
+		r.count++
+	} else {
+		if !r.knownRows[label] {
+			r.knownRows[label] = true
+			colorIdx := r.colorIndex % len(r.cfg.Theme.Colors)
+			r.colorIndex++
+			r.chart.SetDataSetStyles(label, runes.ThinLineStyle,
+				lipgloss.NewStyle().Foreground(r.cfg.Theme.Colors[colorIdx]))
+		}
+		x := r.rowCounts[label]
+		r.chart.PlotDataSet(label, canvas.Float64Point{X: x, Y: dp.Value})
+		r.rowCounts[label] = x + 1
+	}
 	r.chart.DrawAll()
 }
 

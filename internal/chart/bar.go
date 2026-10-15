@@ -15,12 +15,17 @@ type BarRenderer struct {
 	cfg        *Config
 	width      int
 	height     int
+	// Multi-row: track label→color for consistent coloring
+	labelColors map[string]int
+	colorIndex  int
 }
 
 func (r *BarRenderer) Setup(ds *data.DataSet, cfg *Config, width, height int) {
 	r.cfg = cfg
 	r.width = width
 	r.height = height
+	r.labelColors = make(map[string]int)
+	r.colorIndex = 0
 
 	r.chart = barchart.New(width, height)
 	r.chart.SetHorizontal(r.horizontal)
@@ -40,7 +45,6 @@ func (r *BarRenderer) Setup(ds *data.DataSet, cfg *Config, width, height int) {
 	}
 	values := ds.NumericColumn(cfg.YColIdx)
 
-	// Build primary bars
 	bars := make([]barchart.BarData, len(values))
 	for i, v := range values {
 		label := fmt.Sprintf("%d", i)
@@ -57,7 +61,6 @@ func (r *BarRenderer) Setup(ds *data.DataSet, cfg *Config, width, height int) {
 			},
 		}
 
-		// Add overlay values as grouped bars
 		for _, ov := range cfg.Overlays {
 			ovVals := ds.NumericColumn(ov.ColIdx)
 			if i < len(ovVals) {
@@ -81,10 +84,7 @@ func (r *BarRenderer) Setup(ds *data.DataSet, cfg *Config, width, height int) {
 }
 
 func (r *BarRenderer) Push(dp data.DataPoint) {
-	color := lipgloss.Color("#8BE9FD")
-	if r.cfg != nil && len(r.cfg.Theme.Colors) > 0 {
-		color = r.cfg.Theme.Colors[0]
-	}
+	color := r.colorForLabel(dp.Label)
 
 	r.chart.Push(barchart.BarData{
 		Label: dp.Label,
@@ -97,6 +97,19 @@ func (r *BarRenderer) Push(dp data.DataPoint) {
 		},
 	})
 	r.chart.Draw()
+}
+
+func (r *BarRenderer) colorForLabel(label string) lipgloss.Color {
+	if len(r.cfg.Theme.Colors) == 0 {
+		return lipgloss.Color("#8BE9FD")
+	}
+	if idx, ok := r.labelColors[label]; ok {
+		return r.cfg.Theme.Colors[idx%len(r.cfg.Theme.Colors)]
+	}
+	idx := r.colorIndex
+	r.labelColors[label] = idx
+	r.colorIndex++
+	return r.cfg.Theme.Colors[idx%len(r.cfg.Theme.Colors)]
 }
 
 func (r *BarRenderer) Resize(width, height int) {

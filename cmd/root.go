@@ -179,6 +179,7 @@ func runStatic(cfg *chart.Config, args []string) error {
 func runLive(cfg *chart.Config) error {
 	ch := make(chan data.DataPoint, 100)
 	infoCh := make(chan data.StreamInfo, 1)
+	colsCh := make(chan []string, 1)
 
 	// Compile pattern parser if --pattern is set
 	var patternParser *data.PatternParser
@@ -190,43 +191,60 @@ func runLive(cfg *chart.Config) error {
 		}
 	}
 
+	lp := data.NewLiveParser(cfg.YCol, patternParser)
+
 	go func() {
 		defer close(ch)
-		detected := false
+		sentInfo := false
+		sentCols := false
 		scanner := bufio.NewScanner(os.Stdin)
 		for scanner.Scan() {
 			line := scanner.Text()
+			points := lp.Feed(line)
 
-			// Try to detect stream source from header lines (first few lines)
-			if !detected && patternParser == nil {
-				if info := data.DetectStream(line); info != nil {
+			// Send stream info once detected
+			if !sentInfo {
+				if info := lp.GetStreamInfo(); info != nil {
 					infoCh <- *info
-					detected = true
-					continue
+					sentInfo = true
 				}
 			}
 
-			var dp *data.DataPoint
-			if patternParser != nil {
-				dp = patternParser.ParseLine(line)
-			} else {
-				dp = data.ParseLine(line)
+			// Send detected columns once
+			if !sentCols {
+				if cols := lp.Columns(); len(cols) > 0 {
+					colsCh <- cols
+					sentCols = true
+				}
 			}
 
-			if dp != nil {
-				dp.Time = time.Now()
-				ch <- *dp
+			for i := range points {
+				ch <- points[i]
 			}
 		}
 	}()
 
-	// Wait briefly for stream info detection before starting TUI
+	// Wait briefly for stream/column detection before starting TUI
 	var streamInfo *data.StreamInfo
-	select {
-	case info := <-infoCh:
-		streamInfo = &info
-	case <-time.After(500 * time.Millisecond):
-		// No header detected, proceed with defaults
+	timeout := time.After(500 * time.Millisecond)
+	for {
+		select {
+		case info := <-infoCh:
+			streamInfo = &info
+			continue
+		case cols := <-colsCh:
+			// Auto-set Y label from detected columns
+			if cfg.YLabel == "" && len(cols) > 0 {
+				if cfg.YCol != "" && cfg.YCol != "0" && cfg.YCol != "1" {
+					cfg.YLabel = cfg.YCol
+				} else {
+					cfg.YLabel = strings.Join(cols, ", ")
+				}
+			}
+			continue
+		case <-timeout:
+		}
+		break
 	}
 
 	if streamInfo != nil {
@@ -241,7 +259,6 @@ func runLive(cfg *chart.Config) error {
 		}
 	}
 
-	// Defaults for live mode
 	if cfg.XLabel == "" {
 		cfg.XLabel = "time"
 	}
