@@ -31,6 +31,7 @@ var (
 	flagYMax      float64
 	flagPieStyle  string
 	flagOverlay   []string
+	flagFixScale  bool // set by PersistentPreRun
 )
 
 var rootCmd = &cobra.Command{
@@ -38,6 +39,9 @@ var rootCmd = &cobra.Command{
 	Short: "Interactive terminal charts",
 	Long:  "sow renders interactive, colorful charts in your terminal.\nSupports CSV, TSV, XLSX files and piped stdin (including live streaming).",
 	Args:  cobra.MaximumNArgs(1),
+	PersistentPreRun: func(cmd *cobra.Command, args []string) {
+		flagFixScale = cmd.Flags().Changed("ymin") || cmd.Flags().Changed("ymax")
+	},
 	RunE: func(cmd *cobra.Command, args []string) error {
 		defaultType := "bar"
 		if flagLive {
@@ -88,11 +92,12 @@ func runChart(chartType string, args []string) error {
 		Height:    flagHeight,
 		Theme:     th,
 		Live:      flagLive,
-		YMin:      flagYMin,
-		YMax:      flagYMax,
-		FixScale:  flagYMin != 0 || flagYMax != 0,
-		PieStyle:  flagPieStyle,
+		YMin:     flagYMin,
+		YMax:     flagYMax,
+		PieStyle: flagPieStyle,
 	}
+
+	cfg.FixScale = flagFixScale
 
 	if flagLive {
 		return runLive(cfg)
