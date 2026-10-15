@@ -27,6 +27,10 @@ type Config struct {
 	FixScale bool    // Whether YMin/YMax are set explicitly
 	PieStyle string  // "bar" or "circle" (default: "bar")
 
+	// Live Y filter — set by the Y column modal, NOT by --y flag.
+	// Empty = show all labels. Set = show only this label.
+	LiveYFilter string
+
 	// Overlay configuration
 	Overlays []OverlayConfig
 }

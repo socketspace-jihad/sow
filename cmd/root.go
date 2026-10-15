@@ -33,6 +33,8 @@ var (
 	flagOverlay   []string
 	flagFixScale  bool // set by PersistentPreRun
 	flagPattern   string
+	flagSkip      int
+	flagRowStream int
 )
 
 var rootCmd = &cobra.Command{
@@ -69,6 +71,8 @@ func init() {
 	rootCmd.PersistentFlags().StringVar(&flagPieStyle, "pie-style", "bar", "Pie chart style: bar or circle")
 	rootCmd.PersistentFlags().StringSliceVar(&flagOverlay, "overlay", nil, "Overlay columns (name or index, repeatable)")
 	rootCmd.PersistentFlags().StringVarP(&flagPattern, "pattern", "p", "", "Pattern for parsing log lines: {label}={value}")
+	rootCmd.PersistentFlags().IntVar(&flagSkip, "skip", 0, "Skip first N lines of input before parsing")
+	rootCmd.PersistentFlags().IntVar(&flagRowStream, "row-stream", 0, "Group every N data lines as separate overlay series")
 }
 
 // SetVersion sets version info from ldflags.
@@ -191,7 +195,7 @@ func runLive(cfg *chart.Config) error {
 		}
 	}
 
-	lp := data.NewLiveParser(cfg.YCol, patternParser)
+	lp := data.NewLiveParser(cfg.YCol, patternParser, flagSkip, flagRowStream)
 
 	go func() {
 		defer close(ch)
@@ -298,7 +302,7 @@ func readStdin() (*data.DataSet, error) {
 		return nil, fmt.Errorf("reading stdin: %w", err)
 	}
 
-	return data.ParseText(string(raw), flagDelimiter, headerMode())
+	return data.ParseText(string(raw), flagDelimiter, headerMode(), flagSkip)
 }
 
 // headerMode returns: 1 = has header, -1 = no header, 0 = auto-detect

@@ -3,7 +3,7 @@ package data
 import "testing"
 
 func TestLiveParserPidstat(t *testing.T) {
-	lp := NewLiveParser("", nil)
+	lp := NewLiveParser("", nil, 0, 0)
 
 	// pidstat -r output
 	lines := []string{
@@ -46,7 +46,7 @@ func TestLiveParserPidstat(t *testing.T) {
 }
 
 func TestLiveParserPidstatWithY(t *testing.T) {
-	lp := NewLiveParser("VSZ", nil)
+	lp := NewLiveParser("VSZ", nil, 0, 0)
 
 	lines := []string{
 		"02:30:01 PM   UID       PID  minflt/s  majflt/s     VSZ     RSS   %MEM  Command",
@@ -71,7 +71,7 @@ func TestLiveParserPidstatWithY(t *testing.T) {
 }
 
 func TestLiveParserSingleNumbers(t *testing.T) {
-	lp := NewLiveParser("", nil)
+	lp := NewLiveParser("", nil, 0, 0)
 
 	points := lp.Feed("42.7")
 	// Might be buffered waiting for header detection
@@ -86,7 +86,7 @@ func TestLiveParserSingleNumbers(t *testing.T) {
 }
 
 func TestLiveParserPingPassthrough(t *testing.T) {
-	lp := NewLiveParser("", nil)
+	lp := NewLiveParser("", nil, 0, 0)
 
 	// Ping header
 	points := lp.Feed("PING google.com (142.250.185.46) 56(84) bytes of data.")
@@ -110,7 +110,7 @@ func TestLiveParserPingPassthrough(t *testing.T) {
 }
 
 func TestLiveParserVmstat(t *testing.T) {
-	lp := NewLiveParser("", nil)
+	lp := NewLiveParser("", nil, 0, 0)
 
 	lines := []string{
 		"procs -----------memory---------- ---swap-- -----io---- -system-- ------cpu-----",

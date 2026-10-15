@@ -571,15 +571,7 @@ func (m *Model) applyYColumn(name string, idx int) {
 	} else {
 		// Live mode: filter to only this label
 		m.cfg.YLabel = name
-		// Rebuild buffer with only matching labels
-		var filtered []data.DataPoint
-		for _, dp := range m.liveBuffer {
-			if dp.Label == name {
-				filtered = append(filtered, dp)
-			}
-		}
-		// Keep the full buffer but mark the active filter
-		m.cfg.YCol = name
+		m.cfg.LiveYFilter = name
 	}
 }
 
@@ -617,7 +609,7 @@ func (m Model) yColumnModalView() string {
 			current := ""
 			if m.ds != nil && i == m.cfg.YColIdx {
 				current = dim.Render("  (current)")
-			} else if m.ds == nil && col == m.cfg.YLabel {
+			} else if m.ds == nil && col == m.cfg.LiveYFilter {
 				current = dim.Render("  (current)")
 			}
 
@@ -911,7 +903,7 @@ func (m Model) handleData(msg dataMsg) (tea.Model, tea.Cmd) {
 
 	if m.renderer != nil {
 		// In live mode with Y column filter, only push matching labels
-		if m.cfg.Live && m.cfg.YCol != "" && dp.Label != "" && dp.Label != m.cfg.YCol {
+		if m.cfg.LiveYFilter != "" && dp.Label != "" && dp.Label != m.cfg.LiveYFilter {
 			// Still buffer but don't render
 		} else {
 			m.renderer.Push(dp)
@@ -939,10 +931,9 @@ func (m *Model) rebuildFromBuffer() {
 			m.renderer.Setup(ds, m.cfg, m.width, m.height)
 		} else {
 			m.renderer.Setup(nil, m.cfg, m.width, m.height)
-			yFilter := m.cfg.YCol
 			for _, dp := range m.liveBuffer {
-				// Apply Y column filter during replay
-				if yFilter != "" && dp.Label != "" && dp.Label != yFilter {
+				// Apply live Y filter during replay
+				if m.cfg.LiveYFilter != "" && dp.Label != "" && dp.Label != m.cfg.LiveYFilter {
 					continue
 				}
 				m.renderer.Push(dp)

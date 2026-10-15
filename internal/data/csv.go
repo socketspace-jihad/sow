@@ -71,7 +71,7 @@ func ReadCSVAuto(path string, headerMode int) (*DataSet, error) {
 		if err != nil {
 			return nil, err
 		}
-		return ParseText(string(raw), " ", headerMode)
+		return ParseText(string(raw), " ", headerMode, 0)
 	}
 }
 

@@ -1,6 +1,7 @@
 package data
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -20,14 +21,19 @@ type LiveParser struct {
 	pendingLines  []string // buffered lines before header detection
 	lineCount     int
 	yCol          string // user's --y selection (column name or index)
+	skipLines     int    // skip first N lines
+	rowStream     int    // group every N data lines as separate series
+	rowBuffer     []string // buffer for row-stream grouping
 	patternParser *PatternParser
 	streamInfo    *StreamInfo
 }
 
-// NewLiveParser creates a parser with optional --y column and --pattern.
-func NewLiveParser(yCol string, pattern *PatternParser) *LiveParser {
+// NewLiveParser creates a parser with optional --y column, --pattern, --skip, and --row-stream.
+func NewLiveParser(yCol string, pattern *PatternParser, skip int, rowStream int) *LiveParser {
 	return &LiveParser{
 		yCol:          yCol,
+		skipLines:     skip,
+		rowStream:     rowStream,
 		patternParser: pattern,
 	}
 }
@@ -46,6 +52,12 @@ func (lp *LiveParser) Columns() []string {
 // Multiple points are returned when multiple columns are emitted (auto-overlay).
 func (lp *LiveParser) Feed(line string) []DataPoint {
 	lp.lineCount++
+
+	// Skip first N lines
+	if lp.lineCount <= lp.skipLines {
+		return nil
+	}
+
 	trimmed := strings.TrimSpace(line)
 
 	// Pattern parser takes priority
@@ -112,27 +124,138 @@ func (lp *LiveParser) Feed(line string) []DataPoint {
 
 	// Header already detected — parse as data line
 	if len(lp.columns) > 0 {
+		if lp.rowStream > 0 {
+			return lp.feedRowStream(trimmed)
+		}
 		return lp.parseDataLine(trimmed)
 	}
 
 	// No header — fallback to simple parsing
+	if lp.rowStream > 0 {
+		return lp.feedRowStream(trimmed)
+	}
 	return lp.parseFallback(trimmed)
+}
+
+// feedRowStream buffers data lines and emits N DataPoints when the buffer is full.
+func (lp *LiveParser) feedRowStream(line string) []DataPoint {
+	if !lp.hasNumericFields(line) {
+		return nil
+	}
+
+	lp.rowBuffer = append(lp.rowBuffer, line)
+	if len(lp.rowBuffer) < lp.rowStream {
+		return nil
+	}
+
+	now := time.Now()
+	var results []DataPoint
+
+	// Parse all buffered rows into field arrays
+	allFields := make([][]string, len(lp.rowBuffer))
+	for i, rowLine := range lp.rowBuffer {
+		allFields[i] = lp.stripTimestamp(strings.Fields(rowLine))
+	}
+
+	// Find the label column: the column whose values differ across the N rows.
+	// This identifies the row (e.g., CPU=all/0/1, IFACE=eth0/lo).
+	labelColIdx := lp.findLabelColumn(allFields)
+
+	for i, fields := range allFields {
+		// Derive label
+		label := fmt.Sprintf("row-%d", i)
+		if labelColIdx >= 0 && labelColIdx < len(fields) {
+			label = fields[labelColIdx]
+		}
+
+		// Get value using column alignment
+		value := 0.0
+		if len(lp.columns) > 0 {
+			values := lp.alignFieldsToColumns(strings.Fields(lp.rowBuffer[i]))
+			if lp.yCol != "" && lp.yCol != "0" && lp.yCol != "1" {
+				if v, ok := values[lp.yCol]; ok {
+					value = v
+				}
+			} else {
+				// Default: first numeric column
+				for _, col := range lp.columns {
+					if v, ok := values[col]; ok {
+						value = v
+						break
+					}
+				}
+			}
+		} else {
+			dp := ParseLine(lp.rowBuffer[i])
+			if dp != nil {
+				value = dp.Value
+			}
+		}
+
+		results = append(results, DataPoint{
+			Label: label,
+			Value: value,
+			Time:  now,
+			Row:   float64(i),
+		})
+	}
+
+	lp.rowBuffer = lp.rowBuffer[:0]
+	return results
+}
+
+// stripTimestamp removes leading timestamp fields (HH:MM:SS, AM/PM).
+func (lp *LiveParser) stripTimestamp(fields []string) []string {
+	var result []string
+	for _, f := range fields {
+		if f == "AM" || f == "PM" {
+			continue
+		}
+		if len(f) == 8 && f[2] == ':' && f[5] == ':' {
+			continue
+		}
+		result = append(result, f)
+	}
+	return result
+}
+
+// findLabelColumn finds which column position differs across the N rows,
+// making it the row identifier (e.g., CPU number, interface name).
+func (lp *LiveParser) findLabelColumn(allFields [][]string) int {
+	if len(allFields) < 2 {
+		return 0
+	}
+
+	// Find the minimum column count
+	minCols := len(allFields[0])
+	for _, fields := range allFields[1:] {
+		if len(fields) < minCols {
+			minCols = len(fields)
+		}
+	}
+
+	// Check each column: find the first one where values differ
+	for col := 0; col < minCols; col++ {
+		first := allFields[0][col]
+		differs := false
+		for _, fields := range allFields[1:] {
+			if fields[col] != first {
+				differs = true
+				break
+			}
+		}
+		if differs {
+			return col
+		}
+	}
+
+	return 0 // fallback: first column
 }
 
 // isHeaderLine returns true if the line looks like column headers.
 func (lp *LiveParser) isHeaderLine(line string) bool {
 	fields := strings.Fields(line)
 	if len(fields) < 2 {
-		return false
-	}
-
-	// Skip known info lines that aren't column headers
-	if strings.HasPrefix(line, "Linux ") {
-		return false
-	}
-
-	// Skip blank or separator lines
-	if strings.Trim(line, "-= ") == "" {
 		return false
 	}
 
@@ -152,16 +275,11 @@ func (lp *LiveParser) extractColumns(line string) []string {
 	fields := strings.Fields(line)
 	var cols []string
 	for _, f := range fields {
-		// Skip common timestamp parts
+		// Skip timestamp parts
 		if f == "AM" || f == "PM" {
 			continue
 		}
-		// Skip timestamp-like fields (HH:MM:SS)
 		if len(f) == 8 && f[2] == ':' && f[5] == ':' {
-			continue
-		}
-		// Skip known noise words from tool headers
-		if f == "Linux" || f == "Average:" {
 			continue
 		}
 		cols = append(cols, f)

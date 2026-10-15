@@ -98,8 +98,25 @@ func ParseLine(line string) *DataPoint {
 
 // ParseText parses a block of text into a DataSet.
 // Handles CSV, TSV, whitespace-separated, and mixed formats.
-func ParseText(text string, delimiter string, headerMode int) (*DataSet, error) {
-	lines := splitLines(text)
+// skipLines skips the first N lines before parsing.
+func ParseText(text string, delimiter string, headerMode int, skipLines int) (*DataSet, error) {
+	// Split on newlines, preserving blank lines for accurate skip count
+	rawLines := strings.Split(text, "\n")
+
+	// Skip leading lines (before trimming blanks)
+	if skipLines > 0 && skipLines < len(rawLines) {
+		rawLines = rawLines[skipLines:]
+	}
+
+	// Now trim and filter blank lines
+	lines := make([]string, 0, len(rawLines))
+	for _, l := range rawLines {
+		l = strings.TrimSpace(l)
+		if l != "" {
+			lines = append(lines, l)
+		}
+	}
+
 	if len(lines) == 0 {
 		return &DataSet{}, nil
 	}

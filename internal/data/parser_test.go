@@ -70,7 +70,7 @@ func TestParseLineNoNumber(t *testing.T) {
 // --- ParseText tests ---
 
 func TestParseTextCSV(t *testing.T) {
-	ds, err := ParseText("name,val\nalpha,10\nbeta,20\ngamma,30", "", 0)
+	ds, err := ParseText("name,val\nalpha,10\nbeta,20\ngamma,30", "", 0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -86,7 +86,7 @@ func TestParseTextCSV(t *testing.T) {
 }
 
 func TestParseTextSingleColumn(t *testing.T) {
-	ds, err := ParseText("5\n3\n8\n12", "", 0)
+	ds, err := ParseText("5\n3\n8\n12", "", 0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -103,7 +103,7 @@ func TestParseTextSingleColumn(t *testing.T) {
 
 func TestParseTextMixedNotHeader(t *testing.T) {
 	// "Jan 12500" has text + number, should NOT be treated as header
-	ds, err := ParseText("Jan 12500\nFeb 15300\nMar 11800", "", 0)
+	ds, err := ParseText("Jan 12500\nFeb 15300\nMar 11800", "", 0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -116,7 +116,7 @@ func TestParseTextMixedNotHeader(t *testing.T) {
 }
 
 func TestParseTextTSVWithHeader(t *testing.T) {
-	ds, err := ParseText("host\tlatency\ngoogle.com\t28.5\ncloudflare.com\t15.2", "", 0)
+	ds, err := ParseText("host\tlatency\ngoogle.com\t28.5\ncloudflare.com\t15.2", "", 0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -129,7 +129,7 @@ func TestParseTextTSVWithHeader(t *testing.T) {
 }
 
 func TestParseTextForcedHeader(t *testing.T) {
-	ds, err := ParseText("10,20\n30,40", "", 1) // headerMode=1 forces header
+	ds, err := ParseText("10,20\n30,40", "", 1, 0) // headerMode=1 forces header
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -142,7 +142,7 @@ func TestParseTextForcedHeader(t *testing.T) {
 }
 
 func TestParseTextForcedNoHeader(t *testing.T) {
-	ds, err := ParseText("name,val\nalpha,10", "", -1) // headerMode=-1 forces no header
+	ds, err := ParseText("name,val\nalpha,10", "", -1, 0) // headerMode=-1 forces no header
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -155,7 +155,7 @@ func TestParseTextForcedNoHeader(t *testing.T) {
 }
 
 func TestParseTextEmpty(t *testing.T) {
-	ds, err := ParseText("", "", 0)
+	ds, err := ParseText("", "", 0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
