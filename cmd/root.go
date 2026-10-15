@@ -107,6 +107,7 @@ func runChart(chartType string, args []string) error {
 		YMin:       flagYMin,
 		YMax:       flagYMax,
 		PieStyle:   flagPieStyle,
+		RowStream:  flagRowStream,
 		RowMode:    flagRowMode,
 		HiddenRows: make(map[string]bool),
 	}

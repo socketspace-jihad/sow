@@ -255,21 +255,23 @@ func (lp *LiveParser) feedRowStream(line string) []DataPoint {
 	now := time.Now()
 	var results []DataPoint
 
-	allFields := make([][]string, len(lp.rowBuffer))
+	// Use RAW fields (no skip-column) for label detection.
+	// The label column is often a text column like IFACE that we skip for graphing.
+	rawFields := make([][]string, len(lp.rowBuffer))
 	for i, rowLine := range lp.rowBuffer {
-		allFields[i] = lp.stripTimestamp(strings.Fields(rowLine))
+		rawFields[i] = lp.stripTimestamp(strings.Fields(rowLine))
 	}
+	labelColIdx := lp.findLabelColumn(rawFields)
 
-	labelColIdx := lp.findLabelColumn(allFields)
-
-	for i, fields := range allFields {
+	for i := range lp.rowBuffer {
 		label := fmt.Sprintf("row-%d", i)
-		if labelColIdx >= 0 && labelColIdx < len(fields) {
-			label = fields[labelColIdx]
+		if labelColIdx >= 0 && labelColIdx < len(rawFields[i]) {
+			label = rawFields[i][labelColIdx]
 		}
 
 		value := 0.0
 		if len(lp.columns) > 0 {
+			// Use filtered fields (with skip-column) for value extraction
 			values := lp.alignFieldsToColumns(strings.Fields(lp.rowBuffer[i]))
 			if lp.yCol != "" && lp.yCol != "0" && lp.yCol != "1" {
 				if v, ok := values[lp.yCol]; ok {

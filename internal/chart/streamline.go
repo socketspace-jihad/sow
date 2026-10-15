@@ -78,13 +78,17 @@ func (r *StreamlineRenderer) Push(dp data.DataPoint) {
 }
 
 // stableColor returns a consistent color index for a label.
+// Assigns new colors incrementally for labels not yet in LabelColors.
 func (r *StreamlineRenderer) stableColor(label string) int {
-	if r.cfg.LabelColors != nil {
-		if idx, ok := r.cfg.LabelColors[label]; ok {
-			return idx % len(r.cfg.Theme.Colors)
-		}
+	if r.cfg.LabelColors == nil {
+		r.cfg.LabelColors = make(map[string]int)
 	}
-	return 0
+	if idx, ok := r.cfg.LabelColors[label]; ok {
+		return idx % len(r.cfg.Theme.Colors)
+	}
+	idx := len(r.cfg.LabelColors) + 1
+	r.cfg.LabelColors[label] = idx
+	return idx % len(r.cfg.Theme.Colors)
 }
 
 func (r *StreamlineRenderer) pushStack(dp data.DataPoint) {

@@ -592,12 +592,19 @@ func (m Model) manageModalView() string {
 // --- Y Column selector modal ---
 
 // availableYColumns returns column names for the Y dropdown.
-// Static mode: dataset headers. Live mode: only columns that produced data points.
+// Static mode: dataset headers.
+// Live mode without row-stream: labels = columns (use liveLabels).
+// Live mode with row-stream: labels = rows (use LiveColumns for columns).
 func (m Model) availableYColumns() []string {
 	if m.ds != nil && len(m.ds.Headers) > 0 {
 		return m.ds.Headers
 	}
-	// Live mode: use labels seen in data (these are only numeric columns)
+	// With --row-stream, liveLabels are row identifiers (eth0, lo), not columns.
+	// Show LiveColumns (metric names) instead.
+	if m.cfg.RowStream > 0 && len(m.cfg.LiveColumns) > 0 {
+		return append([]string{"(all)"}, m.cfg.LiveColumns...)
+	}
+	// No row-stream: liveLabels ARE column names
 	if len(m.liveLabels) > 0 {
 		return append([]string{"(all)"}, m.liveLabels...)
 	}
