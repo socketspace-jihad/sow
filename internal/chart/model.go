@@ -592,10 +592,14 @@ func (m Model) manageModalView() string {
 // --- Y Column selector modal ---
 
 // availableYColumns returns column names for the Y dropdown.
-// Only works in static mode — live mode columns are set at startup via --y.
+// Static mode: dataset headers. Live mode: detected columns from --header.
 func (m Model) availableYColumns() []string {
 	if m.ds != nil && len(m.ds.Headers) > 0 {
 		return m.ds.Headers
+	}
+	if len(m.cfg.LiveColumns) > 0 {
+		// Prepend "all" option to show every column
+		return append([]string{"(all)"}, m.cfg.LiveColumns...)
 	}
 	return nil
 }
@@ -643,10 +647,15 @@ func (m *Model) applyYColumn(name string, idx int) {
 		}
 		m.cfg.Overlays = nil
 	} else {
-		// Live mode: just update the label display.
-		// Can't switch columns mid-stream — buffer only has the original --y values.
-		// The y dropdown in live mode filters row-stream labels, not columns.
-		m.cfg.YLabel = name
+		// Live mode: filter buffered data by column label.
+		// Each data point's Label is a column name (e.g., "rxpck/s").
+		if name == "(all)" {
+			m.cfg.LiveYFilter = ""
+			m.cfg.YLabel = strings.Join(m.cfg.LiveColumns, ", ")
+		} else {
+			m.cfg.LiveYFilter = name
+			m.cfg.YLabel = name
+		}
 	}
 }
 
@@ -684,8 +693,10 @@ func (m Model) yColumnModalView() string {
 			current := ""
 			if m.ds != nil && i == m.cfg.YColIdx {
 				current = dim.Render("  (current)")
-			} else if m.ds == nil && col == m.cfg.LiveYFilter {
-				current = dim.Render("  (current)")
+			} else if m.ds == nil {
+				if (col == "(all)" && m.cfg.LiveYFilter == "") || col == m.cfg.LiveYFilter {
+					current = dim.Render("  (current)")
+				}
 			}
 
 			lines = append(lines, fmt.Sprintf("%s%s%s", marker, label, current))
