@@ -4,7 +4,7 @@ import "testing"
 
 func TestLiveParserWithHeader(t *testing.T) {
 	// pidstat -r: --skip 2 --header (skip "Linux..." and blank line, next line is header)
-	lp := NewLiveParser("", nil, 2, 0, true, nil)
+	lp := NewLiveParser("", nil, 2, 0, true, nil, nil)
 
 	lines := []string{
 		"Linux 5.4.0-42-generic (host) \t10/15/2026",
@@ -43,7 +43,7 @@ func TestLiveParserWithHeader(t *testing.T) {
 
 func TestLiveParserWithHeaderAndY(t *testing.T) {
 	// --header --y VSZ
-	lp := NewLiveParser("VSZ", nil, 0, 0, true, nil)
+	lp := NewLiveParser("VSZ", nil, 0, 0, true, nil, nil)
 
 	lines := []string{
 		"02:30:01 PM   UID       PID  minflt/s  majflt/s     VSZ     RSS   %MEM  Command",
@@ -69,7 +69,7 @@ func TestLiveParserWithHeaderAndY(t *testing.T) {
 
 func TestLiveParserAddHeader(t *testing.T) {
 	// --add-header name --add-header value (no header line, all data)
-	lp := NewLiveParser("value", nil, 0, 0, false, []string{"name", "value"})
+	lp := NewLiveParser("value", nil, 0, 0, false, []string{"name", "value"}, nil)
 
 	lines := []string{
 		"alpha 10",
@@ -94,7 +94,7 @@ func TestLiveParserAddHeader(t *testing.T) {
 
 func TestLiveParserNoHeader(t *testing.T) {
 	// No --header, no --add-header → fallback to ParseLine
-	lp := NewLiveParser("", nil, 0, 0, false, nil)
+	lp := NewLiveParser("", nil, 0, 0, false, nil, nil)
 
 	points := lp.Feed("42.7")
 	points = append(points, lp.Feed("38.2")...)
@@ -106,7 +106,7 @@ func TestLiveParserNoHeader(t *testing.T) {
 }
 
 func TestLiveParserPingPassthrough(t *testing.T) {
-	lp := NewLiveParser("", nil, 0, 0, false, nil)
+	lp := NewLiveParser("", nil, 0, 0, false, nil, nil)
 
 	points := lp.Feed("PING google.com (142.250.185.46) 56(84) bytes of data.")
 	if len(points) != 0 {
@@ -129,7 +129,7 @@ func TestLiveParserPingPassthrough(t *testing.T) {
 
 func TestLiveParserVmstatWithHeader(t *testing.T) {
 	// vmstat: --skip 1 --header (skip "procs..." line, next is column names)
-	lp := NewLiveParser("", nil, 1, 0, true, nil)
+	lp := NewLiveParser("", nil, 1, 0, true, nil, nil)
 
 	lines := []string{
 		"procs -----------memory---------- ---swap-- -----io---- -system-- ------cpu-----",

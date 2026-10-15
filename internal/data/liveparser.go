@@ -19,6 +19,7 @@ type LiveParser struct {
 	lineCount     int
 	yCol          string
 	skipLines     int
+	skipColumns   []int    // column indices to exclude
 	rowStream     int
 	rowBuffer     []string
 	hasHeader     bool     // --header: first line is column names
@@ -28,22 +29,16 @@ type LiveParser struct {
 }
 
 // NewLiveParser creates a parser.
-//   - yCol: --y column selection
-//   - pattern: --pattern parser (nil if unused)
-//   - skip: --skip N lines
-//   - rowStream: --row-stream N
-//   - hasHeader: --header flag (first data line is column names)
-//   - addHeaders: --add-header values (pre-defined columns, no header line)
-func NewLiveParser(yCol string, pattern *PatternParser, skip int, rowStream int, hasHeader bool, addHeaders []string) *LiveParser {
+func NewLiveParser(yCol string, pattern *PatternParser, skip int, rowStream int, hasHeader bool, addHeaders []string, skipColumns []int) *LiveParser {
 	lp := &LiveParser{
 		yCol:          yCol,
 		skipLines:     skip,
+		skipColumns:   skipColumns,
 		rowStream:     rowStream,
 		hasHeader:     hasHeader,
 		addHeaders:    addHeaders,
 		patternParser: pattern,
 	}
-	// If --add-header is set, columns are known immediately
 	if len(addHeaders) > 0 {
 		lp.columns = addHeaders
 		lp.headerDone = true
@@ -117,6 +112,7 @@ func (lp *LiveParser) Feed(line string) []DataPoint {
 func (lp *LiveParser) extractColumns(line string) []string {
 	fields := strings.Fields(line)
 	var cols []string
+	idx := 0
 	for _, f := range fields {
 		if f == "AM" || f == "PM" {
 			continue
@@ -124,9 +120,22 @@ func (lp *LiveParser) extractColumns(line string) []string {
 		if len(f) == 8 && f[2] == ':' && f[5] == ':' {
 			continue
 		}
-		cols = append(cols, f)
+		if !lp.isSkippedColumn(idx) {
+			cols = append(cols, f)
+		}
+		idx++
 	}
 	return cols
+}
+
+func (lp *LiveParser) isSkippedColumn(idx int) bool {
+	for _, sc := range lp.skipColumns {
+		// Convert 1-based user input to 0-based
+		if sc-1 == idx {
+			return true
+		}
+	}
+	return false
 }
 
 // --- Data line parsing ---
@@ -175,6 +184,7 @@ func (lp *LiveParser) alignFieldsToColumns(fields []string) map[string]float64 {
 		isNumeric bool
 	}
 	var parsed []fieldInfo
+	colIdx := 0
 	for _, f := range fields {
 		if f == "AM" || f == "PM" {
 			continue
@@ -182,6 +192,11 @@ func (lp *LiveParser) alignFieldsToColumns(fields []string) map[string]float64 {
 		if len(f) == 8 && f[2] == ':' && f[5] == ':' {
 			continue
 		}
+		if lp.isSkippedColumn(colIdx) {
+			colIdx++
+			continue
+		}
+		colIdx++
 		if v, err := strconv.ParseFloat(f, 64); err == nil {
 			parsed = append(parsed, fieldInfo{value: v, isNumeric: true})
 		} else {

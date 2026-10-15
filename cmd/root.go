@@ -34,9 +34,10 @@ var (
 	flagFixScale  bool // set by PersistentPreRun
 	flagPattern   string
 	flagSkip      int
-	flagRowStream int
-	flagRowMode   string
-	flagAddHeader []string
+	flagRowStream  int
+	flagRowMode    string
+	flagAddHeader  []string
+	flagSkipColumn []int
 )
 
 var rootCmd = &cobra.Command{
@@ -77,6 +78,7 @@ func init() {
 	rootCmd.PersistentFlags().IntVar(&flagRowStream, "row-stream", 0, "Group every N data lines as separate overlay series")
 	rootCmd.PersistentFlags().StringVar(&flagRowMode, "row-mode", "overlay", "Row-stream display: overlay or stack")
 	rootCmd.PersistentFlags().StringSliceVar(&flagAddHeader, "add-header", nil, "Define column names manually (repeatable, no header line expected)")
+	rootCmd.PersistentFlags().IntSliceVar(&flagSkipColumn, "skip-column", nil, "Skip column by position (1-based, repeatable)")
 }
 
 // SetVersion sets version info from ldflags.
@@ -201,7 +203,7 @@ func runLive(cfg *chart.Config) error {
 		}
 	}
 
-	lp := data.NewLiveParser(cfg.YCol, patternParser, flagSkip, flagRowStream, flagHeader, flagAddHeader)
+	lp := data.NewLiveParser(cfg.YCol, patternParser, flagSkip, flagRowStream, flagHeader, flagAddHeader, flagSkipColumn)
 
 	go func() {
 		defer close(ch)

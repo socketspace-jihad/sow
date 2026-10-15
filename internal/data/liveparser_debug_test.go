@@ -4,7 +4,7 @@ import "testing"
 
 func TestLiveParserSarDev(t *testing.T) {
 	// sar -n DEV: --skip 2 --header
-	lp := NewLiveParser("", nil, 2, 0, true, nil)
+	lp := NewLiveParser("", nil, 2, 0, true, nil, nil)
 
 	lines := []string{
 		"Linux 5.4.0-42-generic (hostname)     10/15/2026     _x86_64_    (8 CPU)",
@@ -94,7 +94,7 @@ func TestParseTextWithSkip(t *testing.T) {
 }
 
 func TestLiveParserWithSkip(t *testing.T) {
-	lp := NewLiveParser("", nil, 2, 0, false, nil) // skip first 2 lines
+	lp := NewLiveParser("", nil, 2, 0, false, nil, nil) // skip first 2 lines
 
 	lines := []string{
 		"Linux 5.4.0-42-generic (hostname)",
@@ -119,7 +119,7 @@ func TestLiveParserWithSkip(t *testing.T) {
 
 func TestLiveParserRowStream(t *testing.T) {
 	// mpstat -P ALL 1: --row-stream 3 groups 3 data lines per sample
-	lp := NewLiveParser("%usr", nil, 0, 3, true, nil)
+	lp := NewLiveParser("%usr", nil, 0, 3, true, nil, nil)
 
 	lines := []string{
 		"11:48:56     CPU    %usr   %nice    %sys %iowait",
@@ -154,5 +154,39 @@ func TestLiveParserRowStream(t *testing.T) {
 	t.Logf("unique labels: %v", labels)
 	if len(labels) != 3 {
 		t.Errorf("expected 3 labels (all, 0, 1), got %d: %v", len(labels), labels)
+	}
+}
+
+func TestLiveParserSkipColumn(t *testing.T) {
+	// sar -n DEV: --skip-column 1 removes IFACE column
+	lp := NewLiveParser("", nil, 0, 0, true, nil, []int{1})
+
+	lines := []string{
+		"IFACE   rxpck/s   txpck/s   rxkB/s",
+		"eth0   1234.00    567.00    890.12",
+	}
+
+	var allPoints []DataPoint
+	for _, line := range lines {
+		points := lp.Feed(line)
+		allPoints = append(allPoints, points...)
+	}
+
+	cols := lp.Columns()
+	t.Logf("columns after skip-column 1: %v", cols)
+
+	// IFACE should be removed
+	for _, c := range cols {
+		if c == "IFACE" {
+			t.Error("IFACE should be skipped")
+		}
+	}
+
+	if len(cols) != 3 {
+		t.Errorf("expected 3 columns (rxpck/s, txpck/s, rxkB/s), got %d: %v", len(cols), cols)
+	}
+
+	if len(allPoints) != 3 {
+		t.Errorf("expected 3 points (one per numeric col), got %d", len(allPoints))
 	}
 }

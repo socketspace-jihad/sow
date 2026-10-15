@@ -592,14 +592,14 @@ func (m Model) manageModalView() string {
 // --- Y Column selector modal ---
 
 // availableYColumns returns column names for the Y dropdown.
-// Static mode: dataset headers. Live mode: detected columns from --header.
+// Static mode: dataset headers. Live mode: only columns that produced data points.
 func (m Model) availableYColumns() []string {
 	if m.ds != nil && len(m.ds.Headers) > 0 {
 		return m.ds.Headers
 	}
-	if len(m.cfg.LiveColumns) > 0 {
-		// Prepend "all" option to show every column
-		return append([]string{"(all)"}, m.cfg.LiveColumns...)
+	// Live mode: use labels seen in data (these are only numeric columns)
+	if len(m.liveLabels) > 0 {
+		return append([]string{"(all)"}, m.liveLabels...)
 	}
 	return nil
 }
